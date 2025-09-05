@@ -13,7 +13,8 @@ const app = express();
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 app.use(
   cors({
-    origin: CLIENT_ORIGIN,
+    // Permitir todos los orígenes reflejando el origin de la solicitud
+    origin: true,
     credentials: true,
   })
 );
@@ -32,7 +33,7 @@ app.use('/api/admin', adminRoutes);
 
 // Start server after DB connection
 const PORT = process.env.PORT || 4000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/koop';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://koop_userdb:Bopm5yln5vGvMLN8@cluster0.mc0qv4s.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 mongoose
   .connect(MONGODB_URI)

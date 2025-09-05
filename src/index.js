@@ -13,7 +13,8 @@ const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+    // Permitir todos los orígenes reflejando el origin de la solicitud
+    origin: true,
     credentials: true,
   })
 );

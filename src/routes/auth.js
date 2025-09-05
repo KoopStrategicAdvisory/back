@@ -2,7 +2,6 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const PreapprovedEmail = require('../models/PreapprovedEmail');
 
 const router = express.Router();
 
@@ -73,17 +72,6 @@ router.post('/register', async (req, res) => {
     }
 
     const normalizedEmail = String(email).toLowerCase().trim();
-    // Validar preaprobación antes de crear usuario
-    const pre = await PreapprovedEmail.findOne({ email: normalizedEmail });
-    if (!pre) {
-      return res.status(403).json({ message: 'Email no autorizado. Solicita invitación al administrador.' });
-    }
-    if (pre.used) {
-      return res.status(409).json({ message: 'Este email ya fue usado para registro.' });
-    }
-    if (pre.expiresAt && pre.expiresAt < new Date()) {
-      return res.status(403).json({ message: 'La invitación expiró. Solicita una nueva.' });
-    }
     if (password.length < 8) {
       return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres.' });
     }
@@ -99,12 +87,8 @@ router.post('/register', async (req, res) => {
       name: String(name).trim(),
       email: normalizedEmail,
       passwordHash,
-      roles: Array.isArray(pre.roles) && pre.roles.length ? pre.roles : ['USER'],
+      roles: Array.isArray(roles) && roles.length ? roles : undefined,
     });
-
-    // Marcar la invitación como usada
-    pre.used = true;
-    await pre.save();
 
     // Emitir tokens y cookie como en login
     const accessToken = signAccessToken(user);
@@ -208,3 +192,4 @@ router.post('/refresh', async (req, res) => {
 });
 
 module.exports = router;
+
