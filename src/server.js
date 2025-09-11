@@ -11,13 +11,26 @@ const app = express();
 
 // CORS setup
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
-app.use(
+/*app.use(
   cors({
     // Permitir todos los orígenes reflejando el origin de la solicitud
     origin: true,
     credentials: true,
   })
-);
+);*/
+app.use(
+  cors({
+    origin: "https://koopstrategicadvisory.com",
+    methods: ["POST"],
+    allowedHeaders: ["Content-Type"],
+    preflightContinue: true
+  })
+)
+.options("*", function(req, res) {
+  if (res.get("Access-Control-Allow-Origin"))
+    res.set("Access-Control-Allow-Private-Network", "true");
+  res.end();
+});
 
 app.use(express.json());
 app.use(cookieParser());
