@@ -39,13 +39,13 @@ app.get('/api/ping', (req, res) => {
 
 // Conectar a MongoDB antes de levantar el servidor
 const PORT = process.env.PORT || 4000;
-//const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/auth_mvp';
-const MONGODB_URI = 'mongodb+srv://koop_userdb:Bopm5yln5vGvMLN8@cluster0.mc0qv4s.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/koop';
+//const MONGODB_URI = 'mongodb+srv://koop_userdb:Bopm5yln5vGvMLN8@cluster0.mc0qv4s.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 mongoose
   .connect(MONGODB_URI, { autoIndex: true })
   .then(() => {
-    console.log('MongoDB ✓ conectado');
+    console.log('MongoDB ✓ conectado a ' + MONGODB_URI);
     app.listen(PORT, () => {
       console.log(`API listening on http://localhost:${PORT}`);
     });
