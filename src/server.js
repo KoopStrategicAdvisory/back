@@ -20,7 +20,7 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 );*/
 app.use(
   cors({
-    origin: true,
+    origin: "https://koopstrategicadvisory.com",
     methods: ["POST"],
     allowedHeaders: ["Content-Type"],
     preflightContinue: true
