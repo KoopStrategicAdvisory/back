@@ -11,26 +11,13 @@ const app = express();
 
 // CORS setup
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
-/*app.use(
+app.use(
   cors({
     // Permitir todos los orígenes reflejando el origin de la solicitud
     origin: true,
     credentials: true,
   })
-);*/
-app.use(
-  cors({
-    origin: "https://koopstrategicadvisory.com",
-    methods: ["POST"],
-    allowedHeaders: ["Content-Type"],
-    preflightContinue: true
-  })
-)
-.options("*", function(req, res) {
-  if (res.get("Access-Control-Allow-Origin"))
-    res.set("Access-Control-Allow-Private-Network", "true");
-  res.end();
-});
+);
 
 app.use(express.json());
 app.use(cookieParser());
@@ -46,12 +33,13 @@ app.use('/api/admin', adminRoutes);
 
 // Start server after DB connection
 const PORT = process.env.PORT || 4000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://koop_userdb:Bopm5yln5vGvMLN8@cluster0.mc0qv4s.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/koop';
+console.log('Hola mundo');
 
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
-    console.log('MongoDB conectado');
+    console.log('MongoDB conectado a' + MONGODB_URI);
     app.listen(PORT, () => {
       console.log(`Servidor escuchando en puerto ${PORT}`);
     });
