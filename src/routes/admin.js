@@ -2,6 +2,7 @@
 const jwt = require('jsonwebtoken');
 const PreapprovedEmail = require('../models/PreapprovedEmail');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 
 const router = express.Router();
 
@@ -68,6 +69,68 @@ router.get('/users', requireAdmin, async (_req, res) => {
     updatedAt: u.updatedAt,
   }));
   res.json({ items });
+});
+
+// Otorgar rol ADMIN a un usuario
+router.post('/users/:id/grant-admin', requireAdmin, async (req, res) => {
+  if (req.params.id === req.user?.sub) {
+    return res.status(400).json({ message: 'No puedes modificar tu propio rol' });
+  }
+  const user = await User.findById(req.params.id).select('name email roles active createdAt updatedAt');
+  if (!user) {
+    return res.status(404).json({ message: 'Usuario no encontrado' });
+  }
+  const rolesSet = new Set((Array.isArray(user.roles) ? user.roles : []).map((r) => String(r || '').toUpperCase()));
+  rolesSet.add('ADMIN');
+  user.roles = Array.from(rolesSet);
+  await user.save();
+  return res.json({
+    user: {
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      roles: user.roles,
+      active: user.active !== false,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    },
+  });
+});
+
+// Eliminar un usuario
+router.delete('/users/:id', requireAdmin, async (req, res) => {
+  const id = String(req.params.id || '').trim();
+  if (!id) {
+    return res.status(400).json({ message: 'Identificador requerido' });
+  }
+  if (id === req.user?.sub) {
+    return res.status(400).json({ message: 'No puedes eliminar tu propio usuario' });
+  }
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(404).json({ message: 'Usuario no encontrado' });
+  }
+  try {
+    const user = await User.findByIdAndDelete(id).select('name email roles active createdAt updatedAt');
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    return res.json({
+      ok: true,
+      id,
+      user: {
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        roles: user.roles,
+        active: user.active !== false,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+    });
+  } catch (err) {
+    console.error('Eliminar usuario error:', err?.message || err);
+    return res.status(500).json({ message: 'No se pudo eliminar el usuario' });
+  }
 });
 
 // Activar/desactivar usuario
