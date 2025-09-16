@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -7,7 +7,7 @@ const router = express.Router();
 
 // Debug: traza todo lo que entra al router de /api/auth
 router.use((req, _res, next) => {
-  console.log("[AUTH ROUTER]", req.method, req.originalUrl);
+  console.log('[AUTH ROUTER]', req.method, req.originalUrl);
   next();
 });
 
@@ -22,6 +22,7 @@ function signAccessToken(user) {
     name: user.name,
     roles: user.roles,
     email: user.email,
+    active: user.active !== false,
   };
   return jwt.sign(payload, process.env.ACCESS_TOKEN_SECRET, {
     expiresIn: ACCESS_TOKEN_EXPIRES_IN,
@@ -53,7 +54,6 @@ function getRefreshCookieOptions() {
 
 function clearRefreshCookie(res) {
   const opts = getRefreshCookieOptions();
-  // Use same attributes to ensure the browser clears it
   res.clearCookie('refreshToken', {
     httpOnly: opts.httpOnly,
     secure: opts.secure,
@@ -73,12 +73,12 @@ router.post('/register', async (req, res) => {
 
     const normalizedEmail = String(email).toLowerCase().trim();
     if (password.length < 8) {
-      return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres.' });
+      return res.status(400).json({ message: 'La contrasena debe tener al menos 8 caracteres.' });
     }
 
     const existing = await User.findOne({ email: normalizedEmail }).lean();
     if (existing) {
-      return res.status(409).json({ message: 'El email ya está registrado.' });
+      return res.status(409).json({ message: 'El email ya esta registrado.' });
     }
 
     const passwordHash = await bcrypt.hash(password, ROUNDS);
@@ -90,22 +90,27 @@ router.post('/register', async (req, res) => {
       roles: Array.isArray(roles) && roles.length ? roles : undefined,
     });
 
-    // Emitir tokens y cookie como en login
     const accessToken = signAccessToken(user);
     const refreshToken = signRefreshToken(user);
     res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
-    console.log("[AUTH] register REAL hit:", req.body?.email);
-    res.set("X-Handler", "register-real");
+    console.log('[AUTH] register REAL hit:', req.body?.email);
+    res.set('X-Handler', 'register-real');
     return res.status(201).json({
-      source: "register-real",
+      source: 'register-real',
       message: 'Usuario registrado correctamente.',
       accessToken,
-      user: { id: user._id, name: user.name, email: user.email, roles: user.roles },
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        roles: user.roles,
+        active: user.active !== false,
+      },
     });
   } catch (err) {
     if (err && err.code === 11000) {
-      return res.status(409).json({ message: 'El email ya está registrado.' });
+      return res.status(409).json({ message: 'El email ya esta registrado.' });
     }
     console.error('Register error:', err);
     return res.status(500).json({ message: 'Error en el servidor.' });
@@ -114,7 +119,7 @@ router.post('/register', async (req, res) => {
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
-  console.log("[AUTH] login hit:", req.body?.email);
+  console.log('[AUTH] login hit:', req.body?.email);
   try {
     const { email, password } = req.body || {};
     if (!email || !password) {
@@ -124,12 +129,16 @@ router.post('/login', async (req, res) => {
     const normalizedEmail = String(email).toLowerCase().trim();
     const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
-      return res.status(401).json({ message: 'Credenciales inválidas.' });
+      return res.status(401).json({ message: 'Credenciales invalidas.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Credenciales inválidas.' });
+      return res.status(401).json({ message: 'Credenciales invalidas.' });
+    }
+
+    if (user.active === false) {
+      return res.status(403).json({ message: 'Cuenta desactivada. Contacta al administrador.' });
     }
 
     const accessToken = signAccessToken(user);
@@ -139,7 +148,13 @@ router.post('/login', async (req, res) => {
     return res.status(200).json({
       message: 'Login correcto.',
       accessToken,
-      user: { id: user._id, name: user.name, email: user.email, roles: user.roles },
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        roles: user.roles,
+        active: user.active !== false,
+      },
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -167,15 +182,18 @@ router.post('/refresh', async (req, res) => {
     try {
       payload = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
     } catch (err) {
-      return res.status(401).json({ message: 'Refresh token inválido.' });
+      return res.status(401).json({ message: 'Refresh token invalido.' });
     }
     if (payload?.type !== 'refresh') {
-      return res.status(400).json({ message: 'Tipo de token inválido.' });
+      return res.status(400).json({ message: 'Tipo de token invalido.' });
     }
 
     const user = await User.findById(payload.sub);
     if (!user) {
       return res.status(401).json({ message: 'Usuario no encontrado.' });
+    }
+    if (user.active === false) {
+      return res.status(403).json({ message: 'Cuenta desactivada. Contacta al administrador.' });
     }
 
     const accessToken = signAccessToken(user);
@@ -184,7 +202,13 @@ router.post('/refresh', async (req, res) => {
     res.set('X-Handler', 'refresh');
     return res.status(200).json({
       accessToken,
-      user: { id: user._id, name: user.name, email: user.email, roles: user.roles },
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        roles: user.roles,
+        active: user.active !== false,
+      },
     });
   } catch (err) {
     console.error('Refresh error:', err);
@@ -193,4 +217,3 @@ router.post('/refresh', async (req, res) => {
 });
 
 module.exports = router;
-
