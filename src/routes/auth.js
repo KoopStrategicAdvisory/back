@@ -114,6 +114,7 @@ router.post('/register', async (req, res) => {
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
+  console.log("[AUTH] login hit:", req.body?.email);
   try {
     const { email, password } = req.body || {};
     if (!email || !password) {

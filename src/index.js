@@ -20,8 +20,13 @@ app.use(
 );
 app.use(express.json());
 app.use(cookieParser());
-app.use((req, _res, next) => {
-  console.log("[APP]", req.method, req.originalUrl);
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const routePath = req.route?.path;
+    const pathLabel = routePath ? ((req.baseUrl || '') + routePath) : req.originalUrl;
+    console.log('[ROUTE]', req.method, pathLabel, '->', res.statusCode, '(' + (Date.now() - start) + 'ms)');
+  });
   next();
 });
 
