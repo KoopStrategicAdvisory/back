@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -88,18 +88,15 @@ router.post('/register', async (req, res) => {
       email: normalizedEmail,
       passwordHash,
       roles: Array.isArray(roles) && roles.length ? roles : undefined,
+      active: false,
     });
-
-    const accessToken = signAccessToken(user);
-    const refreshToken = signRefreshToken(user);
-    res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
     console.log('[AUTH] register REAL hit:', req.body?.email);
     res.set('X-Handler', 'register-real');
     return res.status(201).json({
       source: 'register-real',
-      message: 'Usuario registrado correctamente.',
-      accessToken,
+      message: 'Registro recibido. Un administrador debe activar tu cuenta.',
+      pendingActivation: true,
       user: {
         id: user._id,
         name: user.name,
@@ -137,7 +134,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Credenciales invalidas.' });
     }
 
-    if (user.active === false) {
+    if ((user.active === false || user.isActive === false)) {
       return res.status(403).json({ message: 'Cuenta desactivada. Contacta al administrador.' });
     }
 
@@ -192,7 +189,7 @@ router.post('/refresh', async (req, res) => {
     if (!user) {
       return res.status(401).json({ message: 'Usuario no encontrado.' });
     }
-    if (user.active === false) {
+    if ((user.active === false || user.isActive === false)) {
       return res.status(403).json({ message: 'Cuenta desactivada. Contacta al administrador.' });
     }
 
@@ -217,3 +214,4 @@ router.post('/refresh', async (req, res) => {
 });
 
 module.exports = router;
+
