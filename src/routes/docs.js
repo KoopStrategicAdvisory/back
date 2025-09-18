@@ -1,7 +1,14 @@
 ﻿const express = require('express');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const { uploadBuffer, listObjects, getSignedDownloadUrl } = require('../services/s3');
+const {
+  uploadBuffer,
+  listObjects,
+  getSignedDownloadUrl,
+  deleteObject,
+  buildUserKey,
+  buildUserPrefix,
+} = require('../services/s3');
 
 const router = express.Router();
 
@@ -73,7 +80,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     }
 
     const safeName = slugName(req.file.originalname) || 'archivo';
-    const key = `archivos/${userId}/${folder}/${Date.now()}_${safeName}`;
+    const key = buildUserKey(userId, `${folder}/${Date.now()}_${safeName}`);
     await uploadBuffer({
       key,
       body: req.file.buffer,
@@ -116,8 +123,8 @@ router.get('/recent', requireAuth, async (req, res) => {
     }
 
     const prefix = folder
-      ? `archivos/${userId}/${folder}/`
-      : `archivos/${userId}/`;
+      ? buildUserPrefix(userId, folder)
+      : buildUserPrefix(userId);
 
     const objects = await listObjects({ prefix, maxKeys: Math.max(limit * 5, limit) });
     const items = (objects || [])
@@ -150,7 +157,7 @@ router.get('/download-url', requireAuth, async (req, res) => {
       return res.status(400).json({ message: 'Key requerida' });
     }
     const normalizedKey = String(key);
-    const expectedPrefix = `archivos/${userId}/`;
+    const expectedPrefix = buildUserPrefix(userId);
     if (!normalizedKey.startsWith(expectedPrefix)) {
       return res.status(403).json({ message: 'No tienes acceso a este recurso' });
     }
@@ -160,6 +167,28 @@ router.get('/download-url', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[docs] download-url error', err);
     return res.status(500).json({ message: 'No se pudo generar URL firmada' });
+  }
+});
+
+router.delete('/object', requireAuth, async (req, res) => {
+  try {
+    const userId = ensureUser(req, res);
+    if (!userId) return;
+    const key = req.body?.key || req.query?.key;
+    if (!key) {
+      return res.status(400).json({ message: 'Key requerida' });
+    }
+    const normalizedKey = String(key);
+    const expectedPrefix = buildUserPrefix(userId);
+    if (!normalizedKey.startsWith(expectedPrefix)) {
+      return res.status(403).json({ message: 'No tienes acceso a este recurso' });
+    }
+
+    await deleteObject({ key: normalizedKey });
+    return res.status(204).send();
+  } catch (err) {
+    console.error('[docs] delete error', err);
+    return res.status(500).json({ message: 'Error al eliminar archivo' });
   }
 });
 

@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { normalizeRoles } = require('../utils/roles');
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ function signAccessToken(user) {
   const payload = {
     sub: user._id.toString(),
     name: user.name,
-    roles: user.roles,
+    roles: normalizeRoles(user.roles),
     email: user.email,
     active: user.active !== false,
   };
@@ -87,7 +88,7 @@ router.post('/register', async (req, res) => {
       name: String(name).trim(),
       email: normalizedEmail,
       passwordHash,
-      roles: Array.isArray(roles) && roles.length ? roles : undefined,
+      roles: Array.isArray(roles) && roles.length ? normalizeRoles(roles) : undefined,
       active: false,
     });
 
@@ -101,7 +102,7 @@ router.post('/register', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        roles: user.roles,
+        roles: normalizeRoles(user.roles),
         active: user.active !== false,
       },
     });
@@ -149,7 +150,7 @@ router.post('/login', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        roles: user.roles,
+        roles: normalizeRoles(user.roles),
         active: user.active !== false,
       },
     });
@@ -203,7 +204,7 @@ router.post('/refresh', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        roles: user.roles,
+        roles: normalizeRoles(user.roles),
         active: user.active !== false,
       },
     });
@@ -214,4 +215,3 @@ router.post('/refresh', async (req, res) => {
 });
 
 module.exports = router;
-
