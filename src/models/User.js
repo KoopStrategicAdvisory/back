@@ -19,15 +19,6 @@ const { normalizeRoles } = require('../utils/roles');
       type: String,
       required: true,
     },
-    // Informacion personal adicional para clientes
-    documentNumber: {
-      type: String,
-      trim: true,
-    },
-    phone: {
-      type: String,
-      trim: true,
-    },
     roles: {
       type: [String],
       default: ['user'],
