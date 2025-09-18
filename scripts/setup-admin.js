@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 
 const User = require('../src/models/User');
 const PreapprovedEmail = require('../src/models/PreapprovedEmail');
+const { normalizeRoles } = require('../src/utils/roles');
 
 async function main() {
   const emailArg = process.argv[2] || 'koopstrategicadvisory@gmail.com';
@@ -16,22 +17,27 @@ async function main() {
   try {
     const existing = await User.findOne({ email });
     if (existing) {
-      const roles = Array.isArray(existing.roles) ? existing.roles : [];
-      if (!roles.includes('ADMIN')) {
-        roles.push('ADMIN');
-        existing.roles = roles;
+      const roles = normalizeRoles(existing.roles);
+      if (!roles.includes('admin')) {
+        existing.roles = normalizeRoles('admin', { defaultRole: 'admin' });
         await existing.save();
-        console.log(`[OK] Usuario ${email} actualizado con rol ADMIN.`);
+        console.log(`[OK] Usuario ${email} actualizado con rol admin.`);
       } else {
-        console.log(`[SKIP] Usuario ${email} ya tiene rol ADMIN.`);
+        console.log(`[SKIP] Usuario ${email} ya tiene rol admin.`);
       }
     } else {
       const doc = await PreapprovedEmail.findOneAndUpdate(
         { email },
-        { email, roles: ['ADMIN'], used: false, invitedBy: 'setup-admin-script', notes: 'Grant ADMIN access' },
+        {
+          email,
+          roles: normalizeRoles('admin', { defaultRole: 'admin' }),
+          used: false,
+          invitedBy: 'setup-admin-script',
+          notes: 'Grant admin access',
+        },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
-      console.log(`[OK] Preaprobación creada/actualizada para ${doc.email} con roles: ${doc.roles.join(', ')}`);
+      console.log(`[OK] Preaprobacion creada/actualizada para ${doc.email} con roles: ${doc.roles.join(', ')}`);
     }
   } finally {
     await mongoose.disconnect();

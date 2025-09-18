@@ -1,9 +1,14 @@
 const { Schema, model } = require("mongoose");
+const { normalizeRoles } = require("../utils/roles");
 
 const preSchema = new Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    roles: { type: [String], default: ["USER"] },
+    roles: {
+      type: [String],
+      default: ["user"],
+      set: (value) => normalizeRoles(value),
+    },
     expiresAt: { type: Date },
     used: { type: Boolean, default: false },
     invitedBy: { type: String },
@@ -19,4 +24,3 @@ preSchema.index(
 );
 
 module.exports = model("PreapprovedEmail", preSchema);
-
