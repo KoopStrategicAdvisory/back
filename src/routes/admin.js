@@ -75,60 +75,68 @@ router.get('/users', requireAdmin, async (_req, res) => {
   res.json({ items });
 });
 
-// Listado de clientes activos (excluye admins)
+// Listado de clientes activos (excluye admins) — datos desde Client + User
 router.get('/clients/active', requireAdmin, async (_req, res) => {
-  const users = await User.find({ active: true, roles: { $nin: ['admin'] } })
-    .select('name email documentNumber phone roles active createdAt updatedAt')
+  const clients = await Client.find()
+    .populate({
+      path: 'user',
+      select: 'name email roles active createdAt',
+      match: { active: true, roles: { $nin: ['admin'] } },
+    })
     .sort({ createdAt: -1 });
-  const items = users.map((u) => ({
-    id: u._id.toString(),
-    name: u.name,
-    email: u.email,
-    documentNumber: u.documentNumber,
-    phone: u.phone,
-    roles: normalizeRoles(u.roles),
-    active: u.active !== false,
-    createdAt: u.createdAt,
-    updatedAt: u.updatedAt,
-  }));
+  const items = clients
+    .filter((c) => !!c.user)
+    .map((c) => ({
+      id: c._id.toString(),
+      userId: c.user._id.toString(),
+      name: c.fullName || c.user.name,
+      email: c.email || c.user.email,
+      documentNumber: c.documentNumber,
+      phone: c.phone,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    }));
   res.json({ items });
 });
 
-// Actualizar informacion personal de un cliente
+// Actualizar informacion personal de un cliente (en coleccion Client)
 router.patch('/clients/:id', requireAdmin, async (req, res) => {
   const id = String(req.params.id || '').trim();
   if (!id) return res.status(400).json({ message: 'Identificador requerido' });
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(404).json({ message: 'Usuario no encontrado' });
+    return res.status(404).json({ message: 'Cliente no encontrado' });
   }
-  const { name, email, documentNumber, phone, active } = req.body || {};
+  const { name, documentNumber, phone, email, address, contactInfo, birthDate } = req.body || {};
   const update = {};
-  if (typeof name === 'string') update.name = name;
-  if (typeof email === 'string') update.email = email.toLowerCase().trim();
+  if (typeof name === 'string') update.fullName = name;
   if (typeof documentNumber === 'string') update.documentNumber = documentNumber;
   if (typeof phone === 'string') update.phone = phone;
-  if (typeof active === 'boolean') update.active = active; // opcional
+  if (typeof email === 'string') update.email = email.toLowerCase().trim();
+  if (typeof address === 'string') update.address = address;
+  if (typeof contactInfo === 'string') update.contactInfo = contactInfo;
+  if (typeof birthDate === 'string' || birthDate instanceof Date) {
+    const d = birthDate ? new Date(birthDate) : undefined;
+    if (!isNaN(d?.getTime?.())) update.birthDate = d;
+  }
 
   try {
-    const user = await User.findByIdAndUpdate(id, update, { new: true, runValidators: true })
-      .select('name email documentNumber phone roles active createdAt updatedAt');
-    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    const client = await Client.findByIdAndUpdate(id, update, { new: true, runValidators: true })
+      .populate({ path: 'user', select: 'name email' });
+    if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
     return res.json({
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        documentNumber: user.documentNumber,
-        phone: user.phone,
-        roles: normalizeRoles(user.roles),
-        active: user.active !== false,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
+      client: {
+        id: client._id.toString(),
+        userId: client.user?._id?.toString(),
+        name: client.fullName || client.user?.name,
+        email: client.email || client.user?.email,
+        documentNumber: client.documentNumber,
+        phone: client.phone,
+        createdAt: client.createdAt,
+        updatedAt: client.updatedAt,
       },
     });
   } catch (err) {
     console.error('Actualizar cliente error:', err?.message || err);
-    // error de email duplicado, validaciones, etc.
     return res.status(400).json({ message: err?.message || 'No se pudo actualizar el cliente' });
   }
 });
