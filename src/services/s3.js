@@ -5,8 +5,13 @@ const REGION = process.env.AWS_REGION;
 const BUCKET = process.env.S3_BUCKET_NAME;
 const BASE_PREFIX = process.env.S3_BASE_PREFIX || 'koop';
 
-if (!BUCKET) {
-  console.warn('[S3] S3_BUCKET_NAME no definido. Las operaciones fallaran si se llaman.');
+function ensureConfigured() {
+  if (!BUCKET) {
+    throw new Error('S3_BUCKET_NAME no configurado');
+  }
+  if (!REGION) {
+    throw new Error('AWS_REGION no configurado');
+  }
 }
 
 const client = new S3Client({
@@ -56,6 +61,7 @@ function buildUserPrefix(userId, subPath = '') {
 }
 
 async function uploadBuffer({ key, body, contentType, metadata }) {
+  ensureConfigured();
   const command = new PutObjectCommand({
     Bucket: BUCKET,
     Key: key,
@@ -68,18 +74,21 @@ async function uploadBuffer({ key, body, contentType, metadata }) {
 }
 
 async function listObjects({ prefix, maxKeys = 50 }) {
+  ensureConfigured();
   const command = new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, MaxKeys: maxKeys });
   const data = await client.send(command);
   return data.Contents || [];
 }
 
 async function getSignedDownloadUrl({ key, expiresIn = 600 }) {
+  ensureConfigured();
   const command = new GetObjectCommand({ Bucket: BUCKET, Key: key });
   const url = await getSignedUrl(client, command, { expiresIn });
   return url;
 }
 
 async function deleteObject({ key }) {
+  ensureConfigured();
   const command = new DeleteObjectCommand({ Bucket: BUCKET, Key: key });
   await client.send(command);
   return { key };

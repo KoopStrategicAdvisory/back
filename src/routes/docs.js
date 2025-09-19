@@ -239,6 +239,77 @@ router.delete('/object', requireAuth, async (req, res) => {
   }
 });
 
+// Diagnóstico rápido de S3 y configuración de documentos
+router.get('/diag', requireAuth, async (req, res) => {
+  try {
+    const userId = ensureUser(req, res);
+    if (!userId) return;
+    const requestedFolder = req.query.subfolder;
+    const folder = requestedFolder ? resolveFolder(requestedFolder) : null;
+    if (requestedFolder && !folder) {
+      return res.status(400).json({ message: 'Subcarpeta no permitida' });
+    }
+    const prefix = folder ? buildUserPrefix(userId, folder) : buildUserPrefix(userId);
+
+    let listOk = false;
+    let itemCount = 0;
+    let listError = null;
+    try {
+      const items = await listObjects({ prefix, maxKeys: 1 });
+      listOk = true;
+      itemCount = (items || []).length;
+    } catch (e) {
+      listError = e?.message || String(e);
+    }
+
+    // Optional write test: ?write=1
+    const doWrite = String(req.query.write || '').toLowerCase() === '1' || String(req.query.write || '').toLowerCase() === 'true';
+    let writeOk = false;
+    let signedUrl = null;
+    let deleteOk = false;
+    let writeError = null;
+    if (doWrite) {
+      const testKey = `${prefix}diag_${Date.now()}_${Math.random().toString(16).slice(2)}.txt`;
+      try {
+        await uploadBuffer({
+          key: testKey,
+          body: Buffer.from(`diag ok ${new Date().toISOString()}`),
+          contentType: 'text/plain',
+          metadata: { 'user-id': userId, folder: folder || '' },
+        });
+        writeOk = true;
+        try {
+          signedUrl = await getSignedDownloadUrl({ key: testKey, expiresIn: 120 });
+        } catch (e) {
+          writeError = `SignedURL error: ${e?.message || e}`;
+        }
+      } catch (e) {
+        writeError = e?.message || String(e);
+      } finally {
+        try {
+          await deleteObject({ key: testKey });
+          deleteOk = true;
+        } catch (_) {}
+      }
+    }
+
+    return res.json({
+      ok: true,
+      env: {
+        AWS_REGION: !!process.env.AWS_REGION,
+        S3_BUCKET_NAME: !!process.env.S3_BUCKET_NAME,
+        S3_BASE_PREFIX: process.env.S3_BASE_PREFIX || 'koop',
+        DOCS_ALLOWED_SUBFOLDERS: allowedFolders,
+        DEFAULT_FOLDER,
+      },
+      test: { prefix, listOk, itemCount, listError },
+      testWrite: doWrite ? { writeOk, signedUrl, deleteOk, writeError } : undefined,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err?.message || 'Diag error' });
+  }
+});
+
 // Quick connectivity check to the bucket using the current user prefix
 router.get('/health', requireAuth, async (req, res) => {
   try {
