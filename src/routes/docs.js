@@ -12,7 +12,8 @@ const {
 
 const router = express.Router();
 
-const allowedFolders = (process.env.DOCS_ALLOWED_SUBFOLDERS || 'documentos_iniciales')
+// Allow multiple roots by env. Default now includes a client-specific root "clientes".
+const allowedFolders = (process.env.DOCS_ALLOWED_SUBFOLDERS || 'documentos_iniciales,clientes')
   .split(',')
   .map((f) => f.trim())
   .filter(Boolean);
@@ -49,12 +50,33 @@ function slugName(name) {
     .slice(0, 120);
 }
 
+function sanitizeSegment(seg) {
+  return String(seg || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$|^\.+/g, '')
+    .slice(1, 64); // keep it short
+}
+
+// Accept either an exact allowed root (e.g., "documentos_iniciales")
+// or a nested path starting with an allowed root (e.g., "clientes/123456").
 function resolveFolder(input) {
-  const needle = String(input || '').trim();
-  if (!needle) return DEFAULT_FOLDER;
-  const match = allowedFolders.find((f) => f.toLowerCase() === needle.toLowerCase());
-  if (!match) return null;
-  return match;
+  const raw = String(input || '').trim().replace(/^\/+|\/+$/g, '');
+  if (!raw) return DEFAULT_FOLDER;
+  // exact match
+  const exact = allowedFolders.find((f) => f.toLowerCase() === raw.toLowerCase());
+  if (exact) return exact;
+  // hierarchical: root + optional segments
+  const parts = raw.split('/').filter(Boolean);
+  if (parts.length === 0) return DEFAULT_FOLDER;
+  const root = parts.shift();
+  const rootMatch = allowedFolders.find((f) => f.toLowerCase() === root.toLowerCase());
+  if (!rootMatch) return null;
+  if (parts.length === 0) return rootMatch;
+  const sanitizedRest = parts.map(sanitizeSegment).filter(Boolean).join('/');
+  if (!sanitizedRest) return rootMatch;
+  return `${rootMatch}/${sanitizedRest}`;
 }
 
 function ensureUser(req, res) {
@@ -108,6 +130,31 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
   } catch (err) {
     console.error('[docs] upload error', err);
     return res.status(500).json({ message: 'Error al subir archivo' });
+  }
+});
+
+// Create an empty "folder" marker in S3 (zero-byte object with trailing slash)
+router.post('/folder', requireAuth, async (req, res) => {
+  try {console.log("si entro")
+    const userId = ensureUser(req, res);
+    if (!userId) return;
+    const requestedFolder = req.body?.subfolder;
+    const folder = resolveFolder(requestedFolder);
+    if (!folder) {
+      return res.status(400).json({ message: 'Subcarpeta no permitida' });
+    }
+    // Ensure trailing slash to create a folder-like key
+    const prefix = buildUserPrefix(userId, folder);
+    await uploadBuffer({
+      key: prefix,
+      body: Buffer.alloc(0),
+      contentType: 'application/x-directory',
+      metadata: { 'user-id': userId, folder },
+    });
+    return res.status(201).json({ folder, key: prefix, created: true });
+  } catch (err) {
+    console.error('[docs] create folder error', err);
+    return res.status(500).json({ message: 'Error al crear carpeta' });
   }
 });
 
@@ -189,6 +236,21 @@ router.delete('/object', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[docs] delete error', err);
     return res.status(500).json({ message: 'Error al eliminar archivo' });
+  }
+});
+
+// Quick connectivity check to the bucket using the current user prefix
+router.get('/health', requireAuth, async (req, res) => {
+  try {
+    const userId = ensureUser(req, res);
+    if (!userId) return;
+    // Try list on base prefix for this user (no folder required)
+    const prefix = buildUserPrefix(userId);
+    await listObjects({ prefix, maxKeys: 1 });
+    return res.json({ connected: true, prefix });
+  } catch (err) {
+    console.error('[docs] health error', err);
+    return res.status(500).json({ connected: false, message: err?.message || 'S3 error' });
   }
 });
 

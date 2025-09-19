@@ -83,6 +83,7 @@ router.get('/clients/active', requireAdmin, async (_req, res) => {
       select: 'name email roles active createdAt',
       match: { active: true, roles: { $nin: ['admin'] } },
     })
+    .populate({ path: 'assignedAdmin', select: 'name email roles active' })
     .sort({ createdAt: -1 });
   const items = clients
     .filter((c) => !!c.user)
@@ -93,6 +94,9 @@ router.get('/clients/active', requireAdmin, async (_req, res) => {
       email: c.email || c.user.email,
       documentNumber: c.documentNumber,
       phone: c.phone,
+      assignedAdmin: c.assignedAdmin
+        ? { id: c.assignedAdmin._id.toString(), name: c.assignedAdmin.name, email: c.assignedAdmin.email }
+        : null,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
     }));
@@ -121,7 +125,8 @@ router.patch('/clients/:id', requireAdmin, async (req, res) => {
 
   try {
     const client = await Client.findByIdAndUpdate(id, update, { new: true, runValidators: true })
-      .populate({ path: 'user', select: 'name email' });
+      .populate({ path: 'user', select: 'name email' })
+      .populate({ path: 'assignedAdmin', select: 'name email roles active' });
     if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
     return res.json({
       client: {
@@ -131,6 +136,9 @@ router.patch('/clients/:id', requireAdmin, async (req, res) => {
         email: client.email || client.user?.email,
         documentNumber: client.documentNumber,
         phone: client.phone,
+        assignedAdmin: client.assignedAdmin
+          ? { id: client.assignedAdmin._id.toString(), name: client.assignedAdmin.name, email: client.assignedAdmin.email }
+          : null,
         createdAt: client.createdAt,
         updatedAt: client.updatedAt,
       },
@@ -188,6 +196,7 @@ router.post('/clients/from-user/:id', requireAdmin, async (req, res) => {
         documentNumber: client.documentNumber,
         birthDate: client.birthDate,
         phone: client.phone,
+        assignedAdmin: null,
         email: client.email,
         address: client.address,
         contactInfo: client.contactInfo,
@@ -199,6 +208,46 @@ router.post('/clients/from-user/:id', requireAdmin, async (req, res) => {
     console.error('Crear cliente error:', err?.message || err);
     return res.status(400).json({ message: err?.message || 'No se pudo crear el cliente' });
   }
+});
+
+// Asignar/desasignar admin a un cliente
+router.patch('/clients/:id/assign', requireAdmin, async (req, res) => {
+  const id = String(req.params.id || '').trim();
+  const adminUserId = String(req.body?.adminUserId || '').trim();
+  if (!id) return res.status(400).json({ message: 'Identificador requerido' });
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(404).json({ message: 'Cliente no encontrado' });
+  }
+
+  // Permitir desasignar si viene vacío
+  let assignedAdmin = null;
+  if (adminUserId) {
+    if (!mongoose.Types.ObjectId.isValid(adminUserId)) {
+      return res.status(400).json({ message: 'adminUserId inválido' });
+    }
+    const adminUser = await User.findById(adminUserId).select('name email roles active');
+    if (!adminUser) return res.status(404).json({ message: 'Admin no encontrado' });
+    if (!normalizeRoles(adminUser.roles).includes('admin')) {
+      return res.status(400).json({ message: 'El usuario seleccionado no es admin' });
+    }
+    assignedAdmin = adminUser._id;
+  }
+
+  const client = await Client.findByIdAndUpdate(
+    id,
+    { assignedAdmin },
+    { new: true }
+  ).populate({ path: 'assignedAdmin', select: 'name email roles active' });
+
+  if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
+  return res.json({
+    client: {
+      id: client._id.toString(),
+      assignedAdmin: client.assignedAdmin
+        ? { id: client.assignedAdmin._id.toString(), name: client.assignedAdmin.name, email: client.assignedAdmin.email }
+        : null,
+    },
+  });
 });
 
 // Otorgar rol admin a un usuario
