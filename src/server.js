@@ -6,6 +6,8 @@ const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
+const kpisRoutes = require('./routes/kpis');
+const docsRoutes = require('./routes/docs');
 
 const app = express();
 
@@ -30,6 +32,8 @@ app.get('/api/health', (_req, res) => {
 // Auth routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/kpis', kpisRoutes);
+app.use('/api/docs', docsRoutes);
 
 // Start server after DB connection
 const PORT = process.env.PORT || 4000;

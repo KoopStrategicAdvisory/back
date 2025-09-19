@@ -9,6 +9,13 @@ const ClientSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    // Admin asignado responsable del cliente (opcional)
+    assignedAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false,
+      index: true,
+    },
     // Datos solicitados
     fullName: { type: String, required: true, trim: true },
     documentType: { type: String, trim: true },
@@ -23,4 +30,3 @@ const ClientSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model('Client', ClientSchema);
-
