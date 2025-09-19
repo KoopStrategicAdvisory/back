@@ -39,6 +39,8 @@ const adminRoutes = require('./routes/admin');
 app.use('/api/admin', adminRoutes);
 const docsRoutes = require('./routes/docs');
 app.use('/api/docs', docsRoutes);
+const aiRoutes = require('./routes/ai');
+app.use('/api/ai', aiRoutes);
 
 app.get('/api/ping', (req, res) => {
   res.status(200).json({ ok: true, pong: 'api' });
