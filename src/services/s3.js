@@ -1,5 +1,6 @@
 ﻿const { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { DeleteObjectsCommand } = require('@aws-sdk/client-s3');
 
 const REGION = process.env.AWS_REGION;
 const BUCKET = process.env.S3_BUCKET_NAME;
@@ -94,11 +95,37 @@ async function deleteObject({ key }) {
   return { key };
 }
 
+async function deletePrefix({ prefix }) {
+  ensureConfigured();
+  const normalized = String(prefix || '').replace(/^\/+/, '');
+  let continuationToken = undefined;
+  let total = 0;
+  do {
+    const list = await client.send(new ListObjectsV2Command({
+      Bucket: BUCKET,
+      Prefix: normalized,
+      ContinuationToken: continuationToken,
+      MaxKeys: 1000,
+    }));
+    const toDelete = (list.Contents || []).map((o) => ({ Key: o.Key }));
+    if (toDelete.length > 0) {
+      await client.send(new DeleteObjectsCommand({
+        Bucket: BUCKET,
+        Delete: { Objects: toDelete, Quiet: true },
+      }));
+      total += toDelete.length;
+    }
+    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (continuationToken);
+  return { prefix: normalized, deleted: total };
+}
+
 module.exports = {
   uploadBuffer,
   listObjects,
   getSignedDownloadUrl,
   deleteObject,
+  deletePrefix,
   buildUserKey,
   buildUserPrefix,
 };

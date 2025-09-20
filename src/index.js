@@ -10,6 +10,11 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 
+// Quick visibility: confirm AWS region is loaded from env
+try {
+  console.log('[ENV] AWS_REGION =', process.env.AWS_REGION || '(undefined)');
+} catch (_) {}
+
 app.use(helmet());
 app.use(
   cors({

@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Client = require('../models/Client');
 const mongoose = require('mongoose');
 const { hasAdminRole, normalizeRoles } = require('../utils/roles');
+const { uploadBuffer, deletePrefix } = require('../services/s3');
 
 const router = express.Router();
 
@@ -187,6 +188,29 @@ router.post('/clients/from-user/:id', requireAdmin, async (req, res) => {
       contactInfo: contactInfo ? String(contactInfo).trim() : undefined,
     });
 
+    // Best-effort: create S3 folder clientes/<cedula>/ if cedula is available
+    (async () => {
+      try {
+        const cedulaRaw = client.documentNumber || '';
+        const cedula = String(cedulaRaw).trim();
+        if (cedula) {
+          const cleaned = cedula.replace(/[^0-9A-Za-z._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$|^\.+/g, '').slice(0, 64);
+          if (cleaned) {
+            const key = `clientes/${cleaned}/`;
+            await uploadBuffer({
+              key,
+              body: Buffer.alloc(0),
+              contentType: 'application/x-directory',
+              metadata: { 'client-id': client._id.toString(), 'client-document': cleaned },
+            });
+            console.log('[admin] S3 folder created for client:', key);
+          }
+        }
+      } catch (e) {
+        console.warn('[admin] Could not create S3 folder for client:', e?.message || e);
+      }
+    })();
+
     return res.status(201).json({
       client: {
         id: client._id.toString(),
@@ -248,6 +272,47 @@ router.patch('/clients/:id/assign', requireAdmin, async (req, res) => {
         : null,
     },
   });
+});
+
+// Eliminar un cliente (contenedor) y su carpeta S3 clientes/<cedula>/
+router.delete('/clients/:id', requireAdmin, async (req, res) => {
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ message: 'Identificador requerido' });
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(404).json({ message: 'Cliente no encontrado' });
+  }
+  try {
+    // Password gate for destructive delete
+    const provided = req.headers['x-delete-pass'] || req.body?.pass || req.query?.pass;
+    const expected = process.env.ADMIN_DELETE_CLIENT_PASS || 'eliminarclientekoop';
+    if (!provided || String(provided) !== String(expected)) {
+      return res.status(403).json({ message: 'Contraseña de eliminación inválida' });
+    }
+
+    const client = await Client.findById(id).select('documentNumber');
+    if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
+
+    // Try delete S3 folder first (best-effort)
+    let s3 = { prefix: null, deleted: 0 };
+    const cedula = String(client.documentNumber || '').trim();
+    if (cedula) {
+      const cleaned = cedula.replace(/[^0-9A-Za-z._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$|^\.+/g, '').slice(0, 64);
+      if (cleaned) {
+        const prefix = `clientes/${cleaned}/`;
+        try {
+          s3 = await deletePrefix({ prefix });
+        } catch (e) {
+          console.warn('[admin] delete clients prefix failed:', prefix, e?.message || e);
+        }
+      }
+    }
+
+    await Client.findByIdAndDelete(id);
+    return res.json({ ok: true, id, s3 });
+  } catch (err) {
+    console.error('Eliminar cliente error:', err?.message || err);
+    return res.status(500).json({ message: 'No se pudo eliminar el cliente' });
+  }
 });
 
 // Otorgar rol admin a un usuario

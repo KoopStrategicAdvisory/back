@@ -9,8 +9,14 @@ const {
   buildUserKey,
   buildUserPrefix,
 } = require('../services/s3');
+const Client = require('../models/Client');
+const { normalizeRoles } = require('../utils/roles');
 
 const router = express.Router();
+// Quick visibility when this router is initialized
+try {
+  console.log('[docs] AWS_REGION =', process.env.AWS_REGION || '(undefined)');
+} catch (_) {}
 
 // Allow multiple roots by env. Default now includes a client-specific root "clientes".
 const allowedFolders = (process.env.DOCS_ALLOWED_SUBFOLDERS || 'documentos_iniciales,clientes')
@@ -56,7 +62,71 @@ function sanitizeSegment(seg) {
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$|^\.+/g, '')
-    .slice(1, 64); // keep it short
+    .slice(0, 64); // keep it short
+}
+
+function isClientesFolder(folder) {
+  if (!folder) return false;
+  const raw = String(folder).trim();
+  return raw.toLowerCase().startsWith('clientes');
+}
+
+function ensureTrailingSlash(prefix) {
+  const p = String(prefix || '').replace(/^\/+|\/+$/g, '');
+  return p ? `${p}/` : '';
+}
+
+async function getUserClientDocNumber(userId) {
+  if (!userId) return null;
+  try {
+    const client = await Client.findOne({ user: userId }).select('documentNumber').lean();
+    const doc = String(client?.documentNumber || '').trim();
+    return doc || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+async function clientesPrefixForRequest(req, folder /* sanitized from resolveFolder */) {
+  // folder can be: 'clientes' or 'clientes/<doc>'
+  const parts = String(folder || '').split('/').filter(Boolean);
+  const roles = normalizeRoles(req.user?.roles);
+  const isAdmin = roles.includes('admin');
+
+  if (parts.length === 1) {
+    if (isAdmin) {
+      const err = new Error('Debe especificar clientes/<cedula>');
+      err.status = 400;
+      throw err;
+    }
+    const doc = await getUserClientDocNumber(req.user?.sub || req.user?.id);
+    if (!doc) {
+      const err = new Error('No se encontró cédula asociada al usuario');
+      err.status = 404;
+      throw err;
+    }
+    return ensureTrailingSlash(`clientes/${sanitizeSegment(doc)}`);
+  }
+  const cedula = parts[1] ? sanitizeSegment(parts[1]) : '';
+  if (!cedula) {
+    const err = new Error('Cédula inválida en la ruta de cliente');
+    err.status = 400;
+    throw err;
+  }
+  return ensureTrailingSlash(`clientes/${cedula}`);
+}
+
+async function assertCanAccessClientes(req, prefix) {
+  const parts = String(prefix).split('/').filter(Boolean);
+  const doc = parts[1] || '';
+  const roles = normalizeRoles(req.user?.roles);
+  const isAdmin = roles.includes('admin');
+  if (isAdmin) return true;
+  const ownDoc = await getUserClientDocNumber(req.user?.sub || req.user?.id);
+  if (ownDoc && sanitizeSegment(ownDoc) === doc) return true;
+  const err = new Error('No tienes acceso a esta carpeta');
+  err.status = 403;
+  throw err;
 }
 
 // Accept either an exact allowed root (e.g., "documentos_iniciales")
@@ -102,7 +172,14 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     }
 
     const safeName = slugName(req.file.originalname) || 'archivo';
-    const key = buildUserKey(userId, `${folder}/${Date.now()}_${safeName}`);
+    let key;
+    if (isClientesFolder(folder)) {
+      const prefix = await clientesPrefixForRequest(req, folder);
+      await assertCanAccessClientes(req, prefix);
+      key = `${prefix}${Date.now()}_${safeName}`;
+    } else {
+      key = buildUserKey(userId, `${folder}/${Date.now()}_${safeName}`);
+    }
     await uploadBuffer({
       key,
       body: req.file.buffer,
@@ -144,7 +221,13 @@ router.post('/folder', requireAuth, async (req, res) => {
       return res.status(400).json({ message: 'Subcarpeta no permitida' });
     }
     // Ensure trailing slash to create a folder-like key
-    const prefix = buildUserPrefix(userId, folder);
+    let prefix;
+    if (isClientesFolder(folder)) {
+      prefix = await clientesPrefixForRequest(req, folder);
+      await assertCanAccessClientes(req, prefix);
+    } else {
+      prefix = buildUserPrefix(userId, folder);
+    }
     await uploadBuffer({
       key: prefix,
       body: Buffer.alloc(0),
@@ -169,9 +252,13 @@ router.get('/recent', requireAuth, async (req, res) => {
       return res.status(400).json({ message: 'Subcarpeta no permitida' });
     }
 
-    const prefix = folder
-      ? buildUserPrefix(userId, folder)
-      : buildUserPrefix(userId);
+    let prefix;
+    if (folder && isClientesFolder(folder)) {
+      prefix = await clientesPrefixForRequest(req, folder);
+      await assertCanAccessClientes(req, prefix);
+    } else {
+      prefix = folder ? buildUserPrefix(userId, folder) : buildUserPrefix(userId);
+    }
 
     const objects = await listObjects({ prefix, maxKeys: Math.max(limit * 5, limit) });
     const items = (objects || [])
@@ -205,7 +292,10 @@ router.get('/download-url', requireAuth, async (req, res) => {
     }
     const normalizedKey = String(key);
     const expectedPrefix = buildUserPrefix(userId);
-    if (!normalizedKey.startsWith(expectedPrefix)) {
+    if (normalizedKey.toLowerCase().startsWith('clientes/')) {
+      const prefix = ensureTrailingSlash(normalizedKey.split('/').slice(0, 2).join('/'));
+      await assertCanAccessClientes(req, prefix);
+    } else if (!normalizedKey.startsWith(expectedPrefix)) {
       return res.status(403).json({ message: 'No tienes acceso a este recurso' });
     }
 
@@ -227,7 +317,10 @@ router.delete('/object', requireAuth, async (req, res) => {
     }
     const normalizedKey = String(key);
     const expectedPrefix = buildUserPrefix(userId);
-    if (!normalizedKey.startsWith(expectedPrefix)) {
+    if (normalizedKey.toLowerCase().startsWith('clientes/')) {
+      const prefix = ensureTrailingSlash(normalizedKey.split('/').slice(0, 2).join('/'));
+      await assertCanAccessClientes(req, prefix);
+    } else if (!normalizedKey.startsWith(expectedPrefix)) {
       return res.status(403).json({ message: 'No tienes acceso a este recurso' });
     }
 
