@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const kpisRoutes = require('./routes/kpis');
 const docsRoutes = require('./routes/docs');
+const spotifyRoutes = require('./routes/spotify');
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/kpis', kpisRoutes);
 app.use('/api/docs', docsRoutes);
+app.use('/api/spotify', spotifyRoutes);
 
 // Start server after DB connection
 const PORT = process.env.PORT || 4000;
