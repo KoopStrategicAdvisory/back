@@ -60,10 +60,19 @@ function slugName(name) {
 function sanitizeSegment(seg) {
   return String(seg || '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/[^a-zA-Z0-9._\s-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$|^\.+/g, '')
     .slice(0, 64); // keep it short
+}
+
+function sanitizeFolderName(seg) {
+  return String(seg || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._\s-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$|^\.+/g, '')
+    .slice(0, 64); // keep it short, but preserve spaces
 }
 
 function isClientesFolder(folder) {
@@ -117,7 +126,7 @@ async function clientesPrefixForRequest(req, folder /* sanitized from resolveFol
   
   // Si hay más partes después de la cédula, incluirlas en la ruta
   if (parts.length > 2) {
-    const subfolders = parts.slice(2).map(sanitizeSegment).filter(Boolean).join('/');
+    const subfolders = parts.slice(2).map(sanitizeFolderName).filter(Boolean).join('/');
     return ensureTrailingSlash(`clientes/${cedula}/${subfolders}`);
   }
   
@@ -152,7 +161,7 @@ function resolveFolder(input) {
   const rootMatch = allowedFolders.find((f) => f.toLowerCase() === root.toLowerCase());
   if (!rootMatch) return null;
   if (parts.length === 0) return rootMatch;
-  const sanitizedRest = parts.map(sanitizeSegment).filter(Boolean).join('/');
+  const sanitizedRest = parts.map(sanitizeFolderName).filter(Boolean).join('/');
   if (!sanitizedRest) return rootMatch;
   return `${rootMatch}/${sanitizedRest}`;
 }
