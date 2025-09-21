@@ -42,7 +42,7 @@ function requireAuth(req, res, next) {
     const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
     req.user = payload;
     next();
-  } catch (_e) {
+  } catch (e) {
     return res.status(401).json({ message: 'Token invalido o expirado' });
   }
 }
@@ -88,7 +88,7 @@ async function getUserClientDocNumber(userId) {
 }
 
 async function clientesPrefixForRequest(req, folder /* sanitized from resolveFolder */) {
-  // folder can be: 'clientes' or 'clientes/<doc>'
+  // folder can be: 'clientes' or 'clientes/<doc>' or 'clientes/<doc>/<subfolder>'
   const parts = String(folder || '').split('/').filter(Boolean);
   const roles = normalizeRoles(req.user?.roles);
   const isAdmin = roles.includes('admin');
@@ -113,6 +113,13 @@ async function clientesPrefixForRequest(req, folder /* sanitized from resolveFol
     err.status = 400;
     throw err;
   }
+  
+  // Si hay más partes después de la cédula, incluirlas en la ruta
+  if (parts.length > 2) {
+    const subfolders = parts.slice(2).map(sanitizeSegment).filter(Boolean).join('/');
+    return ensureTrailingSlash(`clientes/${cedula}/${subfolders}`);
+  }
+  
   return ensureTrailingSlash(`clientes/${cedula}`);
 }
 
@@ -261,14 +268,26 @@ router.get('/recent', requireAuth, async (req, res) => {
     }
 
     const objects = await listObjects({ prefix, maxKeys: Math.max(limit * 5, limit) });
+    
     const items = (objects || [])
-      .map((obj) => ({
-        key: obj.Key,
-        name: obj.Key?.split('/')?.pop() || obj.Key,
-        size: obj.Size,
-        lastModified: obj.LastModified ? new Date(obj.LastModified).toISOString() : null,
-      }))
+      .map((obj) => {
+        const key = obj.Key;
+        const name = key?.split('/')?.pop() || key;
+        const isFolder = key?.endsWith('/');
+        
+        return {
+          key,
+          name: isFolder ? name.slice(0, -1) : name, // Remove trailing slash from folder names
+          size: obj.Size,
+          lastModified: obj.LastModified ? new Date(obj.LastModified).toISOString() : null,
+          isFolder,
+        };
+      })
       .sort((a, b) => {
+        // Sort folders first, then by date
+        if (a.isFolder && !b.isFolder) return -1;
+        if (!a.isFolder && b.isFolder) return 1;
+        
         const aTime = a.lastModified ? Date.parse(a.lastModified) : 0;
         const bTime = b.lastModified ? Date.parse(b.lastModified) : 0;
         return bTime - aTime;
