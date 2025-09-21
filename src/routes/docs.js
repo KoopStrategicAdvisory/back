@@ -10,6 +10,7 @@ const {
   buildUserPrefix,
 } = require('../services/s3');
 const Client = require('../models/Client');
+const ClientDocument = require('../models/ClientDocument');
 const { normalizeRoles } = require('../utils/roles');
 
 const router = express.Router();
@@ -194,6 +195,40 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
       metadata: { 'user-id': userId, folder },
     });
 
+    // Registrar el documento en la base de datos si es una carpeta de cliente
+    let documentRecord = null;
+    if (isClientesFolder(folder)) {
+      try {
+        // Extraer el número de documento del cliente de la ruta
+        const parts = folder.split('/');
+        const documentNumber = parts[1]; // clientes/1032465160 -> 1032465160
+        
+        // Buscar el cliente por número de documento
+        const client = await Client.findOne({ documentNumber }).select('_id documentNumber').lean();
+        
+        if (client) {
+          documentRecord = await ClientDocument.create({
+            client: client._id,
+            documentNumber: client.documentNumber,
+            fileName: safeName,
+            originalName: req.file.originalname,
+            fileSize: req.file.size,
+            mimeType: req.file.mimetype || 'application/octet-stream',
+            s3Key: key,
+            folder: folder,
+            uploadedBy: userId,
+            metadata: {
+              uploadIP: req.ip,
+              userAgent: req.get('User-Agent')
+            }
+          });
+        }
+      } catch (dbError) {
+        console.error('[docs] Error al registrar documento en BD:', dbError);
+        // No fallar la subida si hay error en la BD
+      }
+    }
+
     let downloadURL = null;
     try {
       downloadURL = await getSignedDownloadUrl({ key, expiresIn: 600 });
@@ -209,6 +244,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
         size: req.file.size,
         contentType: req.file.mimetype,
         downloadURL,
+        documentId: documentRecord?._id
       },
     });
   } catch (err) {
@@ -419,6 +455,81 @@ router.get('/diag', requireAuth, async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ message: err?.message || 'Diag error' });
+  }
+});
+
+// Obtener historial de documentos de un cliente
+router.get('/client/:documentNumber/history', requireAuth, async (req, res) => {
+  try {
+    const userId = ensureUser(req, res);
+    if (!userId) return;
+    
+    const { documentNumber } = req.params;
+    const { limit = 50, offset = 0, folder } = req.query;
+    
+    // Verificar permisos
+    const roles = normalizeRoles(req.user?.roles);
+    const isAdmin = roles.includes('admin');
+    
+    if (!isAdmin) {
+      // Los usuarios normales solo pueden ver sus propios documentos
+      const client = await Client.findOne({ user: userId, documentNumber }).select('_id').lean();
+      if (!client) {
+        return res.status(403).json({ message: 'No tienes acceso a este cliente' });
+      }
+    }
+    
+    // Construir filtro de consulta
+    const filter = { documentNumber, isActive: true };
+    if (folder) {
+      filter.folder = folder;
+    }
+    
+    // Obtener documentos con paginación
+    const documents = await ClientDocument.find(filter)
+      .populate('client', 'fullName documentNumber')
+      .populate('uploadedBy', 'name email')
+      .sort({ uploadedAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(offset))
+      .lean();
+    
+    // Contar total de documentos
+    const total = await ClientDocument.countDocuments(filter);
+    
+    return res.json({
+      documents,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: (parseInt(offset) + parseInt(limit)) < total
+      }
+    });
+  } catch (err) {
+    console.error('[docs] client history error', err);
+    return res.status(500).json({ message: 'Error al obtener historial de documentos' });
+  }
+});
+
+// Actualizar estadísticas de descarga
+router.post('/document/:documentId/download', requireAuth, async (req, res) => {
+  try {
+    const userId = ensureUser(req, res);
+    if (!userId) return;
+    
+    const { documentId } = req.params;
+    
+    // Actualizar contador de descargas y última fecha de acceso
+    await ClientDocument.findByIdAndUpdate(documentId, {
+      $inc: { downloadCount: 1 },
+      $set: { lastAccessed: new Date() }
+    });
+    
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[docs] download stats error', err);
+    return res.status(500).json({ message: 'Error al actualizar estadísticas' });
   }
 });
 
