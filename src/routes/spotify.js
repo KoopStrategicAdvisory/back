@@ -7,9 +7,7 @@ const router = express.Router();
 const SPOTIFY_CONFIG = {
   clientId: process.env.SPOTIFY_CLIENT_ID || '074997d1db5a42ef91dd9091da00de43',
   clientSecret: process.env.SPOTIFY_CLIENT_SECRET || '5ebb1adb852d45039357283a5b54bf8a',
-  redirectUri: process.env.SPOTIFY_REDIRECT_URI || (process.env.NODE_ENV === 'production' 
-    ? 'https://www.koopstrategicadvisory.com/callback' 
-    : 'http://localhost:5173/callback')
+  redirectUri: process.env.SPOTIFY_REDIRECT_URI || 'https://www.koopstrategicadvisory.com/callback'
 };
 
 // Middleware para verificar autenticación

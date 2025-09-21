@@ -46,6 +46,8 @@ const docsRoutes = require('./routes/docs');
 app.use('/api/docs', docsRoutes);
 const aiRoutes = require('./routes/ai');
 app.use('/api/ai', aiRoutes);
+const spotifyRoutes = require('./routes/spotify');
+app.use('/api/spotify', spotifyRoutes);
 
 app.get('/api/ping', (req, res) => {
   res.status(200).json({ ok: true, pong: 'api' });
