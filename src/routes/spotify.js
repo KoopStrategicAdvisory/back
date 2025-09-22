@@ -19,6 +19,8 @@ router.post('/auth/token', requireAuth, async (req, res) => {
   try {
     const { code } = req.body;
     
+    console.log('🔑 Intercambiando código por token:', { code: code?.substring(0, 10) + '...', redirectUri: SPOTIFY_CONFIG.redirectUri });
+    
     if (!code) {
       return res.status(400).json({ error: 'Código de autorización requerido' });
     }
