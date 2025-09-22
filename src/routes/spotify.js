@@ -116,9 +116,16 @@ router.post('/auth/refresh', requireAuth, async (req, res) => {
 // Obtener perfil del usuario de Spotify
 router.get('/me', requireAuth, async (req, res) => {
   try {
+    console.log('🔍 Verificando sesión de Spotify:', { 
+      hasSession: !!req.session, 
+      hasSpotifyTokens: !!req.session?.spotifyTokens,
+      userId: req.user?.id 
+    });
+    
     const { access_token } = req.session?.spotifyTokens || {};
     
     if (!access_token) {
+      console.log('❌ No hay token de acceso de Spotify en la sesión');
       return res.status(401).json({ error: 'No hay token de acceso de Spotify' });
     }
 
