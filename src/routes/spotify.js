@@ -41,6 +41,9 @@ router.post('/auth/token', async (req, res) => {
     const { access_token, refresh_token, expires_in, token_type } = response.data;
 
     // Guardar tokens en la sesión del usuario (en producción usar base de datos)
+    if (!req.session) {
+      req.session = {};
+    }
     req.session.spotifyTokens = {
       access_token,
       refresh_token,
