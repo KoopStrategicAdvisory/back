@@ -3,15 +3,24 @@ const jwt = require('jsonwebtoken');
 function authenticate(req, res, next) {
   try {
     const header = req.headers['authorization'] || '';
+    console.log('🔐 Middleware de autenticación:', { 
+      hasHeader: !!header, 
+      headerLength: header.length,
+      path: req.path 
+    });
+    
     const parts = header.split(' ');
     if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      console.log('❌ Header de autorización inválido');
       return res.status(401).json({ message: 'No autenticado.' });
     }
     const token = parts[1];
     const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
     req.user = payload; // { sub, email, roles, iat, exp }
+    console.log('✅ Usuario autenticado:', { userId: payload.sub, email: payload.email });
     next();
   } catch (err) {
+    console.log('❌ Error de autenticación:', err.message);
     if (err && err.name === 'TokenExpiredError') {
       return res.status(401).json({ message: 'Token expirado.' });
     }
