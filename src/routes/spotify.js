@@ -15,7 +15,7 @@ const requireAuth = authenticate;
 
 
 // Intercambiar código de autorización por token de acceso
-router.post('/auth/token', async (req, res) => {
+router.post('/auth/token', requireAuth, async (req, res) => {
   try {
     const { code } = req.body;
     
