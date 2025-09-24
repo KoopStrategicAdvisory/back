@@ -31,6 +31,13 @@ const MAX_FILE_MB = Number(process.env.DOCS_MAX_FILE_MB || 25);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_MB * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    // TEMPORAL: No aplicar corrección automática en multer
+    console.log('[docs] Multer - originalname:', file.originalname);
+    console.log('[docs] Multer - originalname (hex):', Buffer.from(file.originalname || '', 'utf8').toString('hex'));
+    console.log('[docs] Multer - originalname (latin1 hex):', Buffer.from(file.originalname || '', 'latin1').toString('hex'));
+    cb(null, true);
+  }
 });
 
 function requireAuth(req, res, next) {
@@ -177,8 +184,11 @@ function ensureUser(req, res) {
 
 router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
   try {
+    console.log('[docs] Upload request received');
+    console.log('[docs] ===== INICIO DEBUG UPLOAD =====');
     const userId = ensureUser(req, res);
     if (!userId) return;
+    console.log('[docs] User ID:', userId);
     if (!req.file) {
       return res.status(400).json({ message: 'Archivo requerido' });
     }
@@ -188,15 +198,74 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
       return res.status(400).json({ message: 'Subcarpeta no permitida' });
     }
 
-    const safeName = slugName(req.file.originalname) || 'archivo';
+    console.log('[docs] req.body completo:', req.body);
+    console.log('[docs] req.body.useExactName:', req.body?.useExactName);
+    console.log('[docs] req.body.subfolder:', req.body?.subfolder);
+    console.log('[docs] req.body.subfolder (hex):', Buffer.from(req.body?.subfolder || '', 'utf8').toString('hex'));
+    console.log('[docs] req.body.subfolder (latin1 hex):', Buffer.from(req.body?.subfolder || '', 'latin1').toString('hex'));
+    const useExactName = req.body?.useExactName === 'true';
+    console.log('[docs] useExactName:', useExactName, 'originalname:', req.file.originalname);
+    console.log('[docs] originalname (hex):', Buffer.from(req.file.originalname || '', 'utf8').toString('hex'));
+    console.log('[docs] originalname (latin1 hex):', Buffer.from(req.file.originalname || '', 'latin1').toString('hex'));
+    
+    // LOGS ADICIONALES PARA DEBUG
+    console.log('[docs] ===== DEBUGGING FILE NAME =====');
+    console.log('[docs] req.file.originalname RAW:', JSON.stringify(req.file.originalname));
+    console.log('[docs] req.file.originalname LENGTH:', req.file.originalname?.length);
+    console.log('[docs] req.file.originalname BYTES:', Array.from(req.file.originalname || '').map(c => c.charCodeAt(0)));
+    console.log('[docs] ===== END DEBUGGING =====');
+    
+    // TEMPORAL: Forzar useExactName para pruebas
+    const forceExactName = true;
+    console.log('[docs] FORZANDO useExactName a true para pruebas');
+    
+    // Función de corrección agresiva para nombres de archivo
+    const aggressiveUTF8Fix = (str) => {
+      if (!str) return str;
+      return str
+        .replace(/TrÃ¡mite/g, 'Trámite')
+        .replace(/TÃºtela/g, 'Tútela')
+        .replace(/trÃ¡mite/g, 'trámite')
+        .replace(/tÃºtela/g, 'tútela')
+        .replace(/ConstituciÃ³n/g, 'Constitución')
+        .replace(/PolÃ­tica/g, 'Política')
+        .replace(/constituciÃ³n/g, 'constitución')
+        .replace(/polÃ­tica/g, 'política')
+        .replace(/Ã¡/g, 'á')
+        .replace(/Ã©/g, 'é')
+        .replace(/Ã­/g, 'í')
+        .replace(/Ã³/g, 'ó')
+        .replace(/Ãº/g, 'ú')
+        .replace(/Ã±/g, 'ñ')
+        .replace(/Ã/g, 'Á')
+        .replace(/Ã‰/g, 'É')
+        .replace(/Ã/g, 'Í')
+        .replace(/Ã"/g, 'Ó')
+        .replace(/Ãš/g, 'Ú')
+        .replace(/Ã'/g, 'Ñ')
+        .replace(/Ã¼/g, 'ü')
+        .replace(/Ãœ/g, 'Ü')
+        .replace(/Ã‡/g, 'Ç')
+        .replace(/Ã§/g, 'ç');
+    };
+    
+    const originalName = req.file.originalname || 'archivo';
+    const correctedName = aggressiveUTF8Fix(originalName);
+    if (correctedName !== originalName) {
+      console.log('[docs] BACKEND FILE NAME FIX - Original:', originalName, 'Corrected:', correctedName);
+    }
+    
+    const safeName = forceExactName ? correctedName : (slugName(correctedName) || 'archivo');
+    console.log('[docs] safeName final:', safeName);
     let key;
     if (isClientesFolder(folder)) {
       const prefix = await clientesPrefixForRequest(req, folder);
       await assertCanAccessClientes(req, prefix);
-      key = `${prefix}${Date.now()}_${safeName}`;
+      key = forceExactName ? `${prefix}${safeName}` : `${prefix}${Date.now()}_${safeName}`;
     } else {
-      key = buildUserKey(userId, `${folder}/${Date.now()}_${safeName}`);
+      key = forceExactName ? buildUserKey(userId, `${folder}/${safeName}`) : buildUserKey(userId, `${folder}/${Date.now()}_${safeName}`);
     }
+    console.log('[docs] key final:', key);
     await uploadBuffer({
       key,
       body: req.file.buffer,
@@ -245,6 +314,9 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
       console.warn('[docs] No se pudo generar URL firmada inmediatamente:', err?.message || err);
     }
 
+    console.log('[docs] ===== FIN DEBUG UPLOAD =====');
+    console.log('[docs] Respuesta enviada - key:', key, 'name:', safeName);
+    
     return res.status(201).json({
       file: {
         key,
@@ -264,10 +336,53 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
 
 // Create an empty "folder" marker in S3 (zero-byte object with trailing slash)
 router.post('/folder', requireAuth, async (req, res) => {
-  try {console.log("si entro")
-    const userId = ensureUser(req, res);
-    if (!userId) return;
-    const requestedFolder = req.body?.subfolder;
+  try {
+    console.log('[docs] Create folder request received');
+    console.log('[docs] req.body completo:', req.body);
+    console.log('[docs] req.body.subfolder:', req.body?.subfolder);
+    console.log('[docs] req.body.subfolder (hex):', Buffer.from(req.body?.subfolder || '', 'utf8').toString('hex'));
+    console.log('[docs] req.body.subfolder (latin1 hex):', Buffer.from(req.body?.subfolder || '', 'latin1').toString('hex'));
+    
+    // Aplicar corrección agresiva en el backend
+    let requestedFolder = req.body?.subfolder;
+    
+    // Función de corrección agresiva
+    const aggressiveUTF8Fix = (str) => {
+      if (!str) return str;
+      return str
+        .replace(/TrÃ¡mite/g, 'Trámite')
+        .replace(/TÃºtela/g, 'Tútela')
+        .replace(/trÃ¡mite/g, 'trámite')
+        .replace(/tÃºtela/g, 'tútela')
+        .replace(/ConstituciÃ³n/g, 'Constitución')
+        .replace(/PolÃ­tica/g, 'Política')
+        .replace(/constituciÃ³n/g, 'constitución')
+        .replace(/polÃ­tica/g, 'política')
+        .replace(/Ã¡/g, 'á')
+        .replace(/Ã©/g, 'é')
+        .replace(/Ã­/g, 'í')
+        .replace(/Ã³/g, 'ó')
+        .replace(/Ãº/g, 'ú')
+        .replace(/Ã±/g, 'ñ')
+        .replace(/Ã/g, 'Á')
+        .replace(/Ã‰/g, 'É')
+        .replace(/Ã/g, 'Í')
+        .replace(/Ã"/g, 'Ó')
+        .replace(/Ãš/g, 'Ú')
+        .replace(/Ã'/g, 'Ñ')
+        .replace(/Ã¼/g, 'ü')
+        .replace(/Ãœ/g, 'Ü')
+        .replace(/Ã‡/g, 'Ç')
+        .replace(/Ã§/g, 'ç');
+    };
+    
+    const correctedFolder = aggressiveUTF8Fix(requestedFolder);
+    if (correctedFolder !== requestedFolder) {
+      console.log('[docs] BACKEND AGGRESSIVE FIX - Original:', requestedFolder, 'Corrected:', correctedFolder);
+      requestedFolder = correctedFolder;
+    }
+    
+    console.log('[docs] Using corrected subfolder:', requestedFolder);
     const folder = resolveFolder(requestedFolder);
     if (!folder) {
       return res.status(400).json({ message: 'Subcarpeta no permitida' });
@@ -280,12 +395,18 @@ router.post('/folder', requireAuth, async (req, res) => {
     } else {
       prefix = buildUserPrefix(userId, folder);
     }
+    
+    console.log('[docs] Final prefix to create:', prefix);
+    console.log('[docs] Final prefix (hex):', Buffer.from(prefix || '', 'utf8').toString('hex'));
+    
     await uploadBuffer({
       key: prefix,
       body: Buffer.alloc(0),
       contentType: 'application/x-directory',
       metadata: { 'user-id': userId, folder },
     });
+    
+    console.log('[docs] Folder created successfully with key:', prefix);
     return res.status(201).json({ folder, key: prefix, created: true });
   } catch (err) {
     console.error('[docs] create folder error', err);
