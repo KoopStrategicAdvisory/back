@@ -509,7 +509,23 @@ router.delete('/object', requireAuth, async (req, res) => {
       return res.status(403).json({ message: 'No tienes acceso a este recurso' });
     }
 
+    // Eliminar el objeto de S3
     await deleteObject({ key: normalizedKey });
+    
+    // Si es un documento de cliente, también eliminar el registro de la base de datos
+    if (normalizedKey.toLowerCase().startsWith('clientes/')) {
+      try {
+        // Buscar y eliminar el registro en ClientDocument
+        const deletedDoc = await ClientDocument.findOneAndDelete({ s3Key: normalizedKey });
+        if (deletedDoc) {
+          console.log('[docs] Documento eliminado de la base de datos:', deletedDoc._id);
+        }
+      } catch (dbError) {
+        console.error('[docs] Error eliminando registro de BD:', dbError);
+        // No fallar la eliminación si hay error en la BD
+      }
+    }
+    
     return res.status(204).send();
   } catch (err) {
     console.error('[docs] delete error', err);
