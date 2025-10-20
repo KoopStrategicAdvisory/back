@@ -14,6 +14,13 @@ const ClientDocument = require('../models/ClientDocument');
 const { normalizeRoles } = require('../utils/roles');
 
 const router = express.Router();
+
+// Helper function to convert string to hex (replaces Buffer.from().toString('hex'))
+function stringToHex(str) {
+  if (!str) return '';
+  return str.split('').map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+}
+
 // Quick visibility when this router is initialized
 try {
   console.log('[docs] AWS_REGION =', process.env.AWS_REGION || '(undefined)');
@@ -34,23 +41,31 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     // TEMPORAL: No aplicar corrección automática en multer
     console.log('[docs] Multer - originalname:', file.originalname);
-    console.log('[docs] Multer - originalname (hex):', Buffer.from(file.originalname || '', 'utf8').toString('hex'));
-    console.log('[docs] Multer - originalname (latin1 hex):', Buffer.from(file.originalname || '', 'latin1').toString('hex'));
+    console.log('[docs] Multer - originalname (hex):', stringToHex(file.originalname || ''));
+    console.log('[docs] Multer - originalname (latin1 hex):', stringToHex(file.originalname || ''));
     cb(null, true);
   }
 });
 
 function requireAuth(req, res, next) {
   const auth = req.headers.authorization || '';
+  console.log('🔧 [docs] requireAuth - URL:', req.url);
+  console.log('🔧 [docs] requireAuth - Authorization header:', auth ? 'Presente' : 'Ausente');
   if (!auth.startsWith('Bearer ')) {
+    console.log('🔧 [docs] requireAuth - No Bearer token found');
     return res.status(401).json({ message: 'No token' });
   }
   try {
     const token = auth.slice(7);
+    console.log('🔧 [docs] requireAuth - Token length:', token.length);
     const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    console.log('🔧 [docs] requireAuth - Token válido para usuario:', payload.sub);
+    console.log('🔧 [docs] requireAuth - Token payload completo:', payload);
+    console.log('🔧 [docs] requireAuth - Roles en token:', payload.roles);
     req.user = payload;
     next();
   } catch (e) {
+    console.log('🔧 [docs] requireAuth - Error verificando token:', e.message);
     return res.status(401).json({ message: 'Token invalido o expirado' });
   }
 }
@@ -70,16 +85,16 @@ function sanitizeSegment(seg) {
     .replace(/[^a-zA-Z0-9._\s-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$|^\.+/g, '')
-    .slice(0, 64); // keep it short
+    .slice(0, 120);
 }
 
-function sanitizeFolderName(seg) {
-  return String(seg || '')
+function sanitizeFolderName(name) {
+  return String(name || '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9._\s-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$|^\.+/g, '')
-    .slice(0, 64); // keep it short, but preserve spaces
+    .slice(0, 120);
 }
 
 function isClientesFolder(folder) {
@@ -88,27 +103,30 @@ function isClientesFolder(folder) {
   return raw.toLowerCase().startsWith('clientes');
 }
 
-function ensureTrailingSlash(prefix) {
-  const p = String(prefix || '').replace(/^\/+|\/+$/g, '');
-  return p ? `${p}/` : '';
-}
-
 async function getUserClientDocNumber(userId) {
   if (!userId) return null;
   try {
-    const client = await Client.findOne({ user: userId }).select('documentNumber').lean();
-    const doc = String(client?.documentNumber || '').trim();
-    return doc || null;
-  } catch (_e) {
+    console.log('[docs] getUserClientDocNumber - userId:', userId);
+    const client = await Client.findOne({ user: userId });
+    console.log('[docs] getUserClientDocNumber - client found:', client);
+    const docNumber = client?.documentNumber || null;
+    console.log('[docs] getUserClientDocNumber - documentNumber:', docNumber);
+    return docNumber;
+  } catch (e) {
+    console.error('[docs] Error getting user client doc number:', e);
     return null;
   }
 }
 
 async function clientesPrefixForRequest(req, folder /* sanitized from resolveFolder */) {
   // folder can be: 'clientes' or 'clientes/<doc>' or 'clientes/<doc>/<subfolder>'
+  console.log('[clientesPrefixForRequest] Input folder:', folder);
   const parts = String(folder || '').split('/').filter(Boolean);
+  console.log('[clientesPrefixForRequest] Parts:', parts);
   const roles = normalizeRoles(req.user?.roles);
   const isAdmin = roles.includes('admin');
+  const isClient = roles.includes('client');
+  console.log('[clientesPrefixForRequest] User roles:', roles, 'isAdmin:', isAdmin, 'isClient:', isClient);
 
   if (parts.length === 1) {
     if (isAdmin) {
@@ -116,45 +134,85 @@ async function clientesPrefixForRequest(req, folder /* sanitized from resolveFol
       err.status = 400;
       throw err;
     }
-    const doc = await getUserClientDocNumber(req.user?.sub || req.user?.id);
-    if (!doc) {
-      const err = new Error('No se encontró cédula asociada al usuario');
-      err.status = 404;
-      throw err;
+    
+    if (isClient) {
+      // Para clientes, usar su documentNumber directamente
+      console.log('[clientesPrefixForRequest] Usuario es cliente, obteniendo documentNumber...');
+      const ownDoc = await getUserClientDocNumber(req.user?.sub || req.user?.id);
+      console.log('[clientesPrefixForRequest] DocumentNumber obtenido:', ownDoc);
+      if (!ownDoc) {
+        console.log('[clientesPrefixForRequest] No se encontró documentNumber');
+        const err = new Error('No se encontró documento de cliente asociado');
+        err.status = 400;
+        throw err;
+      }
+      const result = `clientes/${sanitizeSegment(ownDoc)}/`;
+      console.log('[clientesPrefixForRequest] Resultado:', result);
+      return result;
     }
-    return ensureTrailingSlash(`clientes/${sanitizeSegment(doc)}`);
-  }
-  const cedula = parts[1] ? sanitizeSegment(parts[1]) : '';
-  if (!cedula) {
-    const err = new Error('Cédula inválida en la ruta de cliente');
-    err.status = 400;
+    
+    // Para usuarios regulares (no clientes), no pueden acceder a carpetas de clientes
+    const err = new Error('No tienes permisos para acceder a carpetas de clientes');
+    err.status = 403;
     throw err;
   }
-  
-  // Si hay más partes después de la cédula, incluirlas en la ruta
-  if (parts.length > 2) {
-    const subfolders = parts.slice(2).map(sanitizeFolderName).filter(Boolean).join('/');
-    return ensureTrailingSlash(`clientes/${cedula}/${subfolders}`);
+
+  if (parts.length >= 2) {
+    console.log('[clientesPrefixForRequest] Processing parts[1]:', parts[1]);
+    const doc = sanitizeSegment(parts[1]);
+    console.log('[clientesPrefixForRequest] Sanitized doc:', doc);
+    if (!doc) {
+      const err = new Error('Documento de cliente inválido');
+      err.status = 400;
+      throw err;
+    }
+    if (parts.length === 2) {
+      const result = `clientes/${doc}/`;
+      console.log('[clientesPrefixForRequest] Returning:', result);
+      return result;
+    }
+    const subfolder = parts.slice(2).map(sanitizeFolderName).filter(Boolean).join('/');
+    if (!subfolder) {
+      return `clientes/${doc}/`;
+    }
+    return `clientes/${doc}/${subfolder}/`;
   }
-  
-  return ensureTrailingSlash(`clientes/${cedula}`);
+
+  const err = new Error('Formato de carpeta inválido');
+  err.status = 400;
+  throw err;
 }
 
 async function assertCanAccessClientes(req, prefix) {
+  console.log('[assertCanAccessClientes] Input prefix:', prefix);
   const parts = String(prefix).split('/').filter(Boolean);
   const doc = parts[1] || '';
+  console.log('[assertCanAccessClientes] Extracted doc:', doc);
   const roles = normalizeRoles(req.user?.roles);
   const isAdmin = roles.includes('admin');
-  if (isAdmin) return true;
-  const ownDoc = await getUserClientDocNumber(req.user?.sub || req.user?.id);
-  if (ownDoc && sanitizeSegment(ownDoc) === doc) return true;
+  const isClient = roles.includes('client');
+  console.log('[assertCanAccessClientes] User roles:', roles, 'isAdmin:', isAdmin, 'isClient:', isClient);
+  
+  if (isAdmin) {
+    console.log('[assertCanAccessClientes] Admin access granted');
+    return true;
+  }
+  
+  if (isClient) {
+    const ownDoc = await getUserClientDocNumber(req.user?.sub || req.user?.id);
+    console.log('[assertCanAccessClientes] Own doc:', ownDoc);
+    if (ownDoc && sanitizeSegment(ownDoc) === doc) {
+      console.log('[assertCanAccessClientes] Own doc access granted');
+      return true;
+    }
+  }
+  
+  console.log('[assertCanAccessClientes] Access denied');
   const err = new Error('No tienes acceso a esta carpeta');
   err.status = 403;
   throw err;
 }
 
-// Accept either an exact allowed root (e.g., "documentos_iniciales")
-// or a nested path starting with an allowed root (e.g., "clientes/123456").
 function resolveFolder(input) {
   const raw = String(input || '').trim().replace(/^\/+|\/+$/g, '');
   if (!raw) return DEFAULT_FOLDER;
@@ -179,9 +237,10 @@ function ensureUser(req, res) {
     res.status(400).json({ message: 'Usuario no identificado en el token' });
     return null;
   }
-  return String(userId);
+  return userId;
 }
 
+// Upload endpoint
 router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
   try {
     console.log('[docs] Upload request received');
@@ -189,37 +248,28 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     const userId = ensureUser(req, res);
     if (!userId) return;
     console.log('[docs] User ID:', userId);
+    console.log('[docs] req.body.useExactName:', req.body?.useExactName);
+    console.log('[docs] req.body.subfolder:', req.body?.subfolder);
+    console.log('[docs] req.body.subfolder (hex):', stringToHex(req.body?.subfolder || ''));
+    console.log('[docs] req.body.subfolder (latin1 hex):', stringToHex(req.body?.subfolder || ''));
+    const useExactName = req.body?.useExactName === 'true';
+    console.log('[docs] useExactName:', useExactName, 'originalname:', req.file.originalname);
+    console.log('[docs] originalname (hex):', stringToHex(req.file.originalname || ''));
+    console.log('[docs] originalname (latin1 hex):', stringToHex(req.file.originalname || ''));
+    
+    // LOGS ADICIONALES PARA DEBUG
+    console.log('[docs] req.file.mimetype:', req.file.mimetype);
+    console.log('[docs] req.file.size:', req.file.size);
+    console.log('[docs] req.file.buffer length:', req.file.buffer?.length);
+    
     if (!req.file) {
       return res.status(400).json({ message: 'Archivo requerido' });
     }
-    const requestedFolder = req.body?.subfolder || DEFAULT_FOLDER;
-    const folder = resolveFolder(requestedFolder);
-    if (!folder) {
-      return res.status(400).json({ message: 'Subcarpeta no permitida' });
-    }
 
-    console.log('[docs] req.body completo:', req.body);
-    console.log('[docs] req.body.useExactName:', req.body?.useExactName);
-    console.log('[docs] req.body.subfolder:', req.body?.subfolder);
-    console.log('[docs] req.body.subfolder (hex):', Buffer.from(req.body?.subfolder || '', 'utf8').toString('hex'));
-    console.log('[docs] req.body.subfolder (latin1 hex):', Buffer.from(req.body?.subfolder || '', 'latin1').toString('hex'));
-    const useExactName = req.body?.useExactName === 'true';
-    console.log('[docs] useExactName:', useExactName, 'originalname:', req.file.originalname);
-    console.log('[docs] originalname (hex):', Buffer.from(req.file.originalname || '', 'utf8').toString('hex'));
-    console.log('[docs] originalname (latin1 hex):', Buffer.from(req.file.originalname || '', 'latin1').toString('hex'));
+    // Aplicar corrección agresiva en el backend
+    let requestedFolder = req.body?.subfolder;
     
-    // LOGS ADICIONALES PARA DEBUG
-    console.log('[docs] ===== DEBUGGING FILE NAME =====');
-    console.log('[docs] req.file.originalname RAW:', JSON.stringify(req.file.originalname));
-    console.log('[docs] req.file.originalname LENGTH:', req.file.originalname?.length);
-    console.log('[docs] req.file.originalname BYTES:', Array.from(req.file.originalname || '').map(c => c.charCodeAt(0)));
-    console.log('[docs] ===== END DEBUGGING =====');
-    
-    // TEMPORAL: Forzar useExactName para pruebas
-    const forceExactName = true;
-    console.log('[docs] FORZANDO useExactName a true para pruebas');
-    
-    // Función de corrección agresiva para nombres de archivo
+    // Función de corrección agresiva
     const aggressiveUTF8Fix = (str) => {
       if (!str) return str;
       return str
@@ -249,79 +299,78 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
         .replace(/Ã§/g, 'ç');
     };
     
-    const originalName = req.file.originalname || 'archivo';
-    const correctedName = aggressiveUTF8Fix(originalName);
-    if (correctedName !== originalName) {
-      console.log('[docs] BACKEND FILE NAME FIX - Original:', originalName, 'Corrected:', correctedName);
+    const correctedFolder = aggressiveUTF8Fix(requestedFolder);
+    if (correctedFolder !== requestedFolder) {
+      console.log('[docs] BACKEND AGGRESSIVE FIX - Original:', requestedFolder, 'Corrected:', correctedFolder);
+      requestedFolder = correctedFolder;
     }
     
-    const safeName = forceExactName ? correctedName : (slugName(correctedName) || 'archivo');
-    console.log('[docs] safeName final:', safeName);
+    console.log('[docs] Using corrected subfolder:', requestedFolder);
+    const folder = resolveFolder(requestedFolder);
+    if (!folder) {
+      return res.status(400).json({ message: 'Subcarpeta no permitida' });
+    }
+
     let key;
     if (isClientesFolder(folder)) {
       const prefix = await clientesPrefixForRequest(req, folder);
       await assertCanAccessClientes(req, prefix);
-      key = forceExactName ? `${prefix}${safeName}` : `${prefix}${Date.now()}_${safeName}`;
+      const fileName = useExactName ? req.file.originalname : slugName(req.file.originalname);
+      key = `${prefix}${fileName}`;
     } else {
-      key = forceExactName ? buildUserKey(userId, `${folder}/${safeName}`) : buildUserKey(userId, `${folder}/${Date.now()}_${safeName}`);
+      const prefix = buildUserPrefix(userId, folder);
+      const fileName = useExactName ? req.file.originalname : slugName(req.file.originalname);
+      key = `${prefix}${fileName}`;
     }
-    console.log('[docs] key final:', key);
-    await uploadBuffer({
-      key,
-      body: req.file.buffer,
-      contentType: req.file.mimetype || 'application/octet-stream',
-      metadata: { 'user-id': userId, folder },
-    });
 
-    // Registrar el documento en la base de datos si es una carpeta de cliente
+    console.log('[docs] Final key to upload:', key);
+    console.log('[docs] Final key (hex):', stringToHex(key || ''));
+    
+    if (!key) {
+      console.error('[docs] ERROR: Key is undefined or null');
+      return res.status(400).json({ message: 'Error generando clave para el archivo' });
+    }
+
+    const downloadURL = await getSignedDownloadUrl({ key, expiresIn: 3600 });
+    
+    // Save document record
     let documentRecord = null;
     if (isClientesFolder(folder)) {
-      try {
-        // Extraer el número de documento del cliente de la ruta
-        const parts = folder.split('/');
-        const documentNumber = parts[1]; // clientes/1032465160 -> 1032465160
-        
-        // Buscar el cliente por número de documento
-        const client = await Client.findOne({ documentNumber }).select('_id documentNumber').lean();
-        
-        if (client) {
-          documentRecord = await ClientDocument.create({
-            client: client._id,
-            documentNumber: client.documentNumber,
-            fileName: safeName,
-            originalName: req.file.originalname,
-            fileSize: req.file.size,
-            mimeType: req.file.mimetype || 'application/octet-stream',
-            s3Key: key,
-            folder: folder,
-            uploadedBy: userId,
-            metadata: {
-              uploadIP: req.ip,
-              userAgent: req.get('User-Agent')
-            }
-          });
-        }
-      } catch (dbError) {
-        console.error('[docs] Error al registrar documento en BD:', dbError);
-        // No fallar la subida si hay error en la BD
+      const parts = String(folder).split('/').filter(Boolean);
+      const clientDoc = parts[1] || '';
+      const client = await Client.findOne({ documentNumber: clientDoc });
+      if (client) {
+        documentRecord = await ClientDocument.create({
+          client: client._id,
+          documentNumber: client.documentNumber,
+          fileName: req.file.originalname,
+          originalName: req.file.originalname,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          s3Key: key,
+          folder,
+          uploadedBy: userId,
+        });
       }
     }
 
-    let downloadURL = null;
-    try {
-      downloadURL = await getSignedDownloadUrl({ key, expiresIn: 600 });
-    } catch (err) {
-      console.warn('[docs] No se pudo generar URL firmada inmediatamente:', err?.message || err);
-    }
-
-    console.log('[docs] ===== FIN DEBUG UPLOAD =====');
-    console.log('[docs] Respuesta enviada - key:', key, 'name:', safeName);
+    console.log('[docs] About to call uploadBuffer with key:', key);
+    console.log('[docs] Key type:', typeof key, 'Key length:', key?.length);
     
+    await uploadBuffer({
+      key,
+      body: req.file.buffer,
+      contentType: req.file.mimetype,
+      metadata: { 'user-id': userId, folder },
+    });
+
+    console.log('[docs] Upload successful');
     return res.status(201).json({
+      key,
+      downloadURL,
+      folder,
       file: {
-        key,
-        name: safeName,
-        folder,
+        name: req.file.originalname,
         size: req.file.size,
         contentType: req.file.mimetype,
         downloadURL,
@@ -330,7 +379,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     });
   } catch (err) {
     console.error('[docs] upload error', err);
-    return res.status(500).json({ message: 'Error al subir archivo' });
+    return res.status(500).json({ message: err?.message || 'Error al subir archivo' });
   }
 });
 
@@ -340,8 +389,11 @@ router.post('/folder', requireAuth, async (req, res) => {
     console.log('[docs] Create folder request received');
     console.log('[docs] req.body completo:', req.body);
     console.log('[docs] req.body.subfolder:', req.body?.subfolder);
-    console.log('[docs] req.body.subfolder (hex):', Buffer.from(req.body?.subfolder || '', 'utf8').toString('hex'));
-    console.log('[docs] req.body.subfolder (latin1 hex):', Buffer.from(req.body?.subfolder || '', 'latin1').toString('hex'));
+    console.log('[docs] req.body.subfolder (hex):', stringToHex(req.body?.subfolder || ''));
+    console.log('[docs] req.body.subfolder (latin1 hex):', stringToHex(req.body?.subfolder || ''));
+    
+    const userId = ensureUser(req, res);
+    if (!userId) return;
     
     // Aplicar corrección agresiva en el backend
     let requestedFolder = req.body?.subfolder;
@@ -397,11 +449,11 @@ router.post('/folder', requireAuth, async (req, res) => {
     }
     
     console.log('[docs] Final prefix to create:', prefix);
-    console.log('[docs] Final prefix (hex):', Buffer.from(prefix || '', 'utf8').toString('hex'));
+    console.log('[docs] Final prefix (hex):', stringToHex(prefix || ''));
     
     await uploadBuffer({
       key: prefix,
-      body: Buffer.alloc(0),
+      body: '',
       contentType: 'application/x-directory',
       metadata: { 'user-id': userId, folder },
     });
@@ -416,54 +468,55 @@ router.post('/folder', requireAuth, async (req, res) => {
 
 router.get('/recent', requireAuth, async (req, res) => {
   try {
+    console.log('[docs] ===== INICIO RECENT REQUEST =====');
+    console.log('[docs] Recent request - req.user:', req.user);
     const userId = ensureUser(req, res);
     if (!userId) return;
-    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
-    const requestedFolder = req.query.subfolder;
-    const folder = requestedFolder ? resolveFolder(requestedFolder) : null;
-    if (requestedFolder && !folder) {
-      return res.status(400).json({ message: 'Subcarpeta no permitida' });
-    }
-
-    let prefix;
-    if (folder && isClientesFolder(folder)) {
-      prefix = await clientesPrefixForRequest(req, folder);
-      await assertCanAccessClientes(req, prefix);
-    } else {
-      prefix = folder ? buildUserPrefix(userId, folder) : buildUserPrefix(userId);
-    }
-
-    const objects = await listObjects({ prefix, maxKeys: Math.max(limit * 5, limit) });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+    const subfolder = req.query.subfolder;
+    console.log('[docs] Recent request - userId:', userId, 'limit:', limit, 'subfolder:', subfolder);
     
-    const items = (objects || [])
-      .map((obj) => {
-        const key = obj.Key;
-        const name = key?.split('/')?.pop() || key;
-        const isFolder = key?.endsWith('/');
-        
+    let prefix;
+    if (subfolder) {
+      const folder = resolveFolder(subfolder);
+      if (!folder) {
+        return res.status(400).json({ message: 'Subcarpeta no permitida' });
+      }
+      if (isClientesFolder(folder)) {
+        prefix = await clientesPrefixForRequest(req, folder);
+        await assertCanAccessClientes(req, prefix);
+      } else {
+        prefix = buildUserPrefix(userId, folder);
+      }
+    } else {
+      prefix = buildUserPrefix(userId, DEFAULT_FOLDER);
+    }
+    
+    console.log('[docs] Using prefix for recent:', prefix);
+    const objects = await listObjects({ prefix, maxKeys: limit });
+    console.log('[docs] Objects from S3:', objects);
+    console.log('[docs] Objects count:', objects.length);
+    const items = objects
+      .filter(obj => obj && (obj.key || obj.Key)) // Filtrar objetos sin key
+      .map(obj => {
+        const key = obj.key || obj.Key;
         return {
-          key,
-          name: isFolder ? name.slice(0, -1) : name, // Remove trailing slash from folder names
-          size: obj.Size,
-          lastModified: obj.LastModified ? new Date(obj.LastModified).toISOString() : null,
-          isFolder,
+          key: key,
+          name: key.split('/').pop() || 'Unknown',
+          size: obj.size || obj.Size || 0,
+          lastModified: obj.lastModified || obj.LastModified || new Date(),
+          isFolder: key.endsWith('/'),
         };
-      })
-      .sort((a, b) => {
-        // Sort folders first, then by date
-        if (a.isFolder && !b.isFolder) return -1;
-        if (!a.isFolder && b.isFolder) return 1;
-        
-        const aTime = a.lastModified ? Date.parse(a.lastModified) : 0;
-        const bTime = b.lastModified ? Date.parse(b.lastModified) : 0;
-        return bTime - aTime;
-      })
-      .slice(0, limit);
-
-    return res.json({ items, folder: folder || null });
+      });
+    
+    console.log('[docs] Processed items:', items);
+    return res.json({ items, prefix });
   } catch (err) {
-    console.error('[docs] recent error', err);
-    return res.status(500).json({ message: 'Error al listar documentos' });
+    console.error('[docs] ===== ERROR EN RECENT REQUEST =====');
+    console.error('[docs] recent error:', err);
+    console.error('[docs] Error stack:', err.stack);
+    console.error('[docs] Error message:', err.message);
+    return res.status(500).json({ message: 'Error al obtener archivos recientes' });
   }
 });
 
@@ -475,20 +528,11 @@ router.get('/download-url', requireAuth, async (req, res) => {
     if (!key) {
       return res.status(400).json({ message: 'Key requerida' });
     }
-    const normalizedKey = String(key);
-    const expectedPrefix = buildUserPrefix(userId);
-    if (normalizedKey.toLowerCase().startsWith('clientes/')) {
-      const prefix = ensureTrailingSlash(normalizedKey.split('/').slice(0, 2).join('/'));
-      await assertCanAccessClientes(req, prefix);
-    } else if (!normalizedKey.startsWith(expectedPrefix)) {
-      return res.status(403).json({ message: 'No tienes acceso a este recurso' });
-    }
-
-    const url = await getSignedDownloadUrl({ key: normalizedKey, expiresIn: Number(expires) || 600 });
-    return res.json({ url, key: normalizedKey, expiresIn: Number(expires) || 600 });
+    const downloadURL = await getSignedDownloadUrl({ key, expiresIn: expires });
+    return res.json({ downloadURL });
   } catch (err) {
     console.error('[docs] download-url error', err);
-    return res.status(500).json({ message: 'No se pudo generar URL firmada' });
+    return res.status(500).json({ message: 'Error al obtener URL de descarga' });
   }
 });
 
@@ -500,111 +544,105 @@ router.delete('/object', requireAuth, async (req, res) => {
     if (!key) {
       return res.status(400).json({ message: 'Key requerida' });
     }
-    const normalizedKey = String(key);
-    const expectedPrefix = buildUserPrefix(userId);
-    if (normalizedKey.toLowerCase().startsWith('clientes/')) {
-      const prefix = ensureTrailingSlash(normalizedKey.split('/').slice(0, 2).join('/'));
-      await assertCanAccessClientes(req, prefix);
-    } else if (!normalizedKey.startsWith(expectedPrefix)) {
-      return res.status(403).json({ message: 'No tienes acceso a este recurso' });
-    }
-
-    // Eliminar el objeto de S3
-    await deleteObject({ key: normalizedKey });
     
-    // Si es un documento de cliente, también eliminar el registro de la base de datos
-    if (normalizedKey.toLowerCase().startsWith('clientes/')) {
-      try {
-        // Buscar y eliminar el registro en ClientDocument
-        const deletedDoc = await ClientDocument.findOneAndDelete({ s3Key: normalizedKey });
-        if (deletedDoc) {
-          console.log('[docs] Documento eliminado de la base de datos:', deletedDoc._id);
-        }
-      } catch (dbError) {
-        console.error('[docs] Error eliminando registro de BD:', dbError);
-        // No fallar la eliminación si hay error en la BD
+    // Verificar permisos antes de eliminar
+    if (isClientesFolder(key)) {
+      await assertCanAccessClientes(req, key);
+    } else {
+      const userPrefix = buildUserPrefix(userId, DEFAULT_FOLDER);
+      if (!key.startsWith(userPrefix)) {
+        return res.status(403).json({ message: 'No tienes permisos para eliminar este objeto' });
       }
     }
     
-    return res.status(204).send();
+    await deleteObject({ key });
+    return res.json({ deleted: true, key });
   } catch (err) {
-    console.error('[docs] delete error', err);
-    return res.status(500).json({ message: 'Error al eliminar archivo' });
+    console.error('[docs] delete object error', err);
+    return res.status(500).json({ message: err?.message || 'Error al eliminar objeto' });
   }
 });
 
-// Diagnóstico rápido de S3 y configuración de documentos
 router.get('/diag', requireAuth, async (req, res) => {
   try {
     const userId = ensureUser(req, res);
     if (!userId) return;
     const requestedFolder = req.query.subfolder;
-    const folder = requestedFolder ? resolveFolder(requestedFolder) : null;
-    if (requestedFolder && !folder) {
-      return res.status(400).json({ message: 'Subcarpeta no permitida' });
+    console.log('[docs] Diag request - userId:', userId, 'subfolder:', requestedFolder);
+    
+    let prefix;
+    let folder = DEFAULT_FOLDER;
+    if (requestedFolder) {
+      folder = resolveFolder(requestedFolder);
+      if (!folder) {
+        return res.status(400).json({ message: 'Subcarpeta no permitida' });
+      }
+      if (isClientesFolder(folder)) {
+        prefix = await clientesPrefixForRequest(req, folder);
+        await assertCanAccessClientes(req, prefix);
+      } else {
+        prefix = buildUserPrefix(userId, folder);
+      }
+    } else {
+      prefix = buildUserPrefix(userId, folder);
     }
-    const prefix = folder ? buildUserPrefix(userId, folder) : buildUserPrefix(userId);
-
-    let listOk = false;
-    let itemCount = 0;
-    let listError = null;
-    try {
-      const items = await listObjects({ prefix, maxKeys: 1 });
-      listOk = true;
-      itemCount = (items || []).length;
-    } catch (e) {
-      listError = e?.message || String(e);
-    }
-
-    // Optional write test: ?write=1
-    const doWrite = String(req.query.write || '').toLowerCase() === '1' || String(req.query.write || '').toLowerCase() === 'true';
+    
+    console.log('[docs] Using prefix for diag:', prefix);
+    
+    // Test read access
+    let readOk = false;
     let writeOk = false;
-    let signedUrl = null;
-    let deleteOk = false;
-    let writeError = null;
+    let listOk = false;
+    
+    try {
+      await listObjects(prefix, 1);
+      readOk = true;
+      listOk = true;
+    } catch (e) {
+      console.log('[docs] Read/list test failed:', e.message);
+    }
+    
+    // Test write access (only if doWrite is true)
+    const doWrite = req.query.write === 'true';
     if (doWrite) {
       const testKey = `${prefix}diag_${Date.now()}_${Math.random().toString(16).slice(2)}.txt`;
       try {
         await uploadBuffer({
           key: testKey,
-          body: Buffer.from(`diag ok ${new Date().toISOString()}`),
+          body: `diag ok ${new Date().toISOString()}`,
           contentType: 'text/plain',
           metadata: { 'user-id': userId, folder: folder || '' },
         });
         writeOk = true;
         try {
-          signedUrl = await getSignedDownloadUrl({ key: testKey, expiresIn: 120 });
+          await deleteObject({ key: testKey });
         } catch (e) {
-          writeError = `SignedURL error: ${e?.message || e}`;
+          console.log('[docs] Cleanup failed:', e.message);
         }
       } catch (e) {
-        writeError = e?.message || String(e);
-      } finally {
-        try {
-          await deleteObject({ key: testKey });
-          deleteOk = true;
-        } catch (_) {}
+        console.log('[docs] Write test failed:', e.message);
       }
     }
-
+    
     return res.json({
-      ok: true,
-      env: {
-        AWS_REGION: !!process.env.AWS_REGION,
-        S3_BUCKET_NAME: !!process.env.S3_BUCKET_NAME,
-        S3_BASE_PREFIX: process.env.S3_BASE_PREFIX || 'koop',
-        DOCS_ALLOWED_SUBFOLDERS: allowedFolders,
-        DEFAULT_FOLDER,
+      prefix,
+      folder,
+      permissions: {
+        read: readOk,
+        write: writeOk,
+        list: listOk,
       },
-      test: { prefix, listOk, itemCount, listError },
-      testWrite: doWrite ? { writeOk, signedUrl, deleteOk, writeError } : undefined,
+      user: {
+        id: userId,
+        roles: req.user?.roles,
+      },
     });
   } catch (err) {
-    return res.status(500).json({ message: err?.message || 'Diag error' });
+    console.error('[docs] diag error', err);
+    return res.status(500).json({ message: 'Error en diagnóstico' });
   }
 });
 
-// Obtener historial de documentos de un cliente
 router.get('/client/:documentNumber/history', requireAuth, async (req, res) => {
   try {
     const userId = ensureUser(req, res);
@@ -618,47 +656,47 @@ router.get('/client/:documentNumber/history', requireAuth, async (req, res) => {
     const isAdmin = roles.includes('admin');
     
     if (!isAdmin) {
-      // Los usuarios normales solo pueden ver sus propios documentos
-      const client = await Client.findOne({ user: userId, documentNumber }).select('_id').lean();
-      if (!client) {
-        return res.status(403).json({ message: 'No tienes acceso a este cliente' });
+      // Usuario normal solo puede ver su propio historial
+      const ownDoc = await getUserClientDocNumber(userId);
+      if (!ownDoc || sanitizeSegment(ownDoc) !== sanitizeSegment(documentNumber)) {
+        return res.status(403).json({ message: 'No tienes acceso a este historial' });
       }
     }
     
-    // Construir filtro de consulta
-    const filter = { documentNumber, isActive: true };
+    // Buscar el cliente
+    const client = await Client.findOne({ documentNumber: sanitizeSegment(documentNumber) });
+    if (!client) {
+      return res.status(404).json({ message: 'Cliente no encontrado' });
+    }
+    
+    // Construir filtro para documentos
+    const filter = { clientId: client._id };
     if (folder) {
       filter.folder = folder;
     }
     
     // Obtener documentos con paginación
     const documents = await ClientDocument.find(filter)
-      .populate('client', 'fullName documentNumber')
-      .populate('uploadedBy', 'name email')
-      .sort({ uploadedAt: -1 })
+      .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip(parseInt(offset))
-      .lean();
+      .populate('uploadedBy', 'name email');
     
-    // Contar total de documentos
     const total = await ClientDocument.countDocuments(filter);
     
     return res.json({
       documents,
-      pagination: {
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: (parseInt(offset) + parseInt(limit)) < total
-      }
+      total,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      hasMore: (parseInt(offset) + documents.length) < total,
     });
   } catch (err) {
     console.error('[docs] client history error', err);
-    return res.status(500).json({ message: 'Error al obtener historial de documentos' });
+    return res.status(500).json({ message: 'Error al obtener historial del cliente' });
   }
 });
 
-// Actualizar estadísticas de descarga
 router.post('/document/:documentId/download', requireAuth, async (req, res) => {
   try {
     const userId = ensureUser(req, res);
@@ -666,32 +704,56 @@ router.post('/document/:documentId/download', requireAuth, async (req, res) => {
     
     const { documentId } = req.params;
     
-    // Actualizar contador de descargas y última fecha de acceso
-    await ClientDocument.findByIdAndUpdate(documentId, {
-      $inc: { downloadCount: 1 },
-      $set: { lastAccessed: new Date() }
-    });
+    // Buscar el documento
+    const document = await ClientDocument.findById(documentId).populate('clientId');
+    if (!document) {
+      return res.status(404).json({ message: 'Documento no encontrado' });
+    }
     
-    return res.json({ success: true });
+    // Verificar permisos
+    const roles = normalizeRoles(req.user?.roles);
+    const isAdmin = roles.includes('admin');
+    
+    if (!isAdmin) {
+      // Usuario normal solo puede descargar sus propios documentos
+      const ownDoc = await getUserClientDocNumber(userId);
+      if (!ownDoc || sanitizeSegment(ownDoc) !== sanitizeSegment(document.clientId.documentNumber)) {
+        return res.status(403).json({ message: 'No tienes acceso a este documento' });
+      }
+    }
+    
+    // Actualizar estadísticas de descarga
+    document.downloadCount = (document.downloadCount || 0) + 1;
+    document.lastDownloadedAt = new Date();
+    await document.save();
+    
+    return res.json({ 
+      message: 'Estadísticas de descarga actualizadas',
+      downloadCount: document.downloadCount 
+    });
   } catch (err) {
-    console.error('[docs] download stats error', err);
-    return res.status(500).json({ message: 'Error al actualizar estadísticas' });
+    console.error('[docs] document download stats error', err);
+    return res.status(500).json({ message: 'Error al actualizar estadísticas de descarga' });
   }
 });
 
-// Quick connectivity check to the bucket using the current user prefix
 router.get('/health', requireAuth, async (req, res) => {
   try {
     const userId = ensureUser(req, res);
     if (!userId) return;
     // Try list on base prefix for this user (no folder required)
-    const prefix = buildUserPrefix(userId);
-    await listObjects({ prefix, maxKeys: 1 });
-    return res.json({ connected: true, prefix });
+    const prefix = buildUserPrefix(userId, DEFAULT_FOLDER);
+    await listObjects(prefix, 1);
+    return res.json({ status: 'ok', userId, prefix });
   } catch (err) {
     console.error('[docs] health error', err);
-    return res.status(500).json({ connected: false, message: err?.message || 'S3 error' });
+    return res.status(500).json({ message: 'Error en health check' });
   }
 });
 
 module.exports = router;
+
+
+
+
+

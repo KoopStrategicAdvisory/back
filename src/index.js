@@ -18,7 +18,7 @@ try {
 app.use(helmet());
 app.use(
   cors({
-    // Permitir todos los orÃ­genes reflejando el origin de la solicitud
+    // Permitir todos los ori­genes reflejando el origin de la solicitud
     origin: true,
     credentials: true,
   })
@@ -35,7 +35,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rutas de autenticaciÃ³n
+// Rutas de autenticacion
 const authRoutes = require('./routes/auth');
 app.use('/api/auth', authRoutes);
 const kpisRoutes = require('./routes/kpis');

@@ -5,7 +5,7 @@ const User = require('../models/User');
 const Client = require('../models/Client');
 const mongoose = require('mongoose');
 const { hasAdminRole, normalizeRoles } = require('../utils/roles');
-const { uploadBuffer, deletePrefix } = require('../services/s3');
+const { uploadBuffer, deletePrefix, claimFolder } = require('../services/s3');
 
 const router = express.Router();
 
@@ -150,6 +150,37 @@ router.patch('/clients/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// Verificar si existe carpeta S3 para una cédula
+router.get('/clients/check-folder/:documentNumber', requireAdmin, async (req, res) => {
+  const documentNumber = String(req.params.documentNumber || '').trim();
+  if (!documentNumber) {
+    return res.status(400).json({ message: 'Número de documento requerido' });
+  }
+
+  try {
+    const cleaned = documentNumber.replace(/[^0-9A-Za-z._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$|^\.+/g, '').slice(0, 64);
+    const key = `clientes/${cleaned}/`;
+    
+    const { listObjects } = require('../services/s3');
+    const existingObjects = await listObjects({ prefix: key, maxKeys: 10 });
+    
+    return res.json({
+      documentNumber: cleaned,
+      folderPath: key,
+      exists: existingObjects.length > 0,
+      objectCount: existingObjects.length,
+      objects: existingObjects.map(obj => ({
+        key: obj.Key,
+        size: obj.Size,
+        lastModified: obj.LastModified
+      }))
+    });
+  } catch (e) {
+    console.error('Check folder error:', e?.message || e);
+    return res.status(500).json({ message: 'Error verificando carpeta' });
+  }
+});
+
 // Crear cliente (contenedor) a partir de un usuario
 router.post('/clients/from-user/:id', requireAdmin, async (req, res) => {
   const id = String(req.params.id || '').trim();
@@ -188,7 +219,7 @@ router.post('/clients/from-user/:id', requireAdmin, async (req, res) => {
       contactInfo: contactInfo ? String(contactInfo).trim() : undefined,
     });
 
-    // Best-effort: create S3 folder clientes/<cedula>/ if cedula is available
+    // Best-effort: create or claim S3 folder clientes/<cedula>/ if cedula is available
     (async () => {
       try {
         const cedulaRaw = client.documentNumber || '';
@@ -197,17 +228,40 @@ router.post('/clients/from-user/:id', requireAdmin, async (req, res) => {
           const cleaned = cedula.replace(/[^0-9A-Za-z._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$|^\.+/g, '').slice(0, 64);
           if (cleaned) {
             const key = `clientes/${cleaned}/`;
-            await uploadBuffer({
-              key,
-              body: Buffer.alloc(0),
-              contentType: 'application/x-directory',
-              metadata: { 'client-id': client._id.toString(), 'client-document': cleaned },
-            });
-            console.log('[admin] S3 folder created for client:', key);
+            
+            // Check if folder already exists
+            const { listObjects } = require('../services/s3');
+            const existingObjects = await listObjects({ prefix: key, maxKeys: 1 });
+            
+            if (existingObjects.length > 0) {
+              // Folder exists - claim it by updating metadata of all files
+              console.log('[admin] S3 folder already exists, claiming for client:', key);
+              
+              const claimResult = await claimFolder({
+                prefix: key,
+                clientId: client._id.toString(),
+                documentNumber: cleaned
+              });
+              
+              console.log(`[admin] S3 folder claimed for client: ${key}, claimed ${claimResult.claimed} objects`);
+            } else {
+              // Folder doesn't exist - create new one
+              await uploadBuffer({
+                key,
+                body: Buffer.alloc(0),
+                contentType: 'application/x-directory',
+                metadata: { 
+                  'client-id': client._id.toString(), 
+                  'client-document': cleaned,
+                  'created-at': new Date().toISOString()
+                },
+              });
+              console.log('[admin] S3 folder created for client:', key);
+            }
           }
         }
       } catch (e) {
-        console.warn('[admin] Could not create S3 folder for client:', e?.message || e);
+        console.warn('[admin] Could not create/claim S3 folder for client:', e?.message || e);
       }
     })();
 

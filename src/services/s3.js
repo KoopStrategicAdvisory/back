@@ -75,10 +75,15 @@ async function uploadBuffer({ key, body, contentType, metadata }) {
 }
 
 async function listObjects({ prefix, maxKeys = 50 }) {
+  console.log('[listObjects] Input prefix:', prefix, 'maxKeys:', maxKeys);
   ensureConfigured();
   const command = new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, MaxKeys: maxKeys });
+  console.log('[listObjects] Sending command to S3...');
   const data = await client.send(command);
-  return data.Contents || [];
+  console.log('[listObjects] S3 response:', data);
+  const contents = data.Contents || [];
+  console.log('[listObjects] Returning contents:', contents.length, 'items');
+  return contents;
 }
 
 async function getSignedDownloadUrl({ key, expiresIn = 600 }) {
@@ -120,12 +125,64 @@ async function deletePrefix({ prefix }) {
   return { prefix: normalized, deleted: total };
 }
 
+async function claimFolder({ prefix, clientId, documentNumber }) {
+  ensureConfigured();
+  const normalized = String(prefix || '').replace(/^\/+/, '');
+  let continuationToken = undefined;
+  let claimed = 0;
+  
+  do {
+    const list = await client.send(new ListObjectsV2Command({
+      Bucket: BUCKET,
+      Prefix: normalized,
+      ContinuationToken: continuationToken,
+      MaxKeys: 1000,
+    }));
+    
+    const objects = list.Contents || [];
+    
+    // Claim each object by copying it with updated metadata
+    for (const obj of objects) {
+      try {
+        // Skip if it's already a metadata file
+        if (obj.Key.endsWith('.claimed') || obj.Key.endsWith('.metadata')) {
+          continue;
+        }
+        
+        // Copy object with updated metadata
+        const copyCommand = new PutObjectCommand({
+          Bucket: BUCKET,
+          Key: obj.Key,
+          CopySource: `${BUCKET}/${obj.Key}`,
+          Metadata: {
+            'client-id': clientId,
+            'client-document': documentNumber,
+            'claimed-at': new Date().toISOString(),
+            'original-owner': 'claimed'
+          },
+          MetadataDirective: 'REPLACE'
+        });
+        
+        await client.send(copyCommand);
+        claimed++;
+      } catch (e) {
+        console.warn(`[S3] Could not claim object ${obj.Key}:`, e?.message || e);
+      }
+    }
+    
+    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (continuationToken);
+  
+  return { prefix: normalized, claimed };
+}
+
 module.exports = {
   uploadBuffer,
   listObjects,
   getSignedDownloadUrl,
   deleteObject,
   deletePrefix,
+  claimFolder,
   buildUserKey,
   buildUserPrefix,
 };
