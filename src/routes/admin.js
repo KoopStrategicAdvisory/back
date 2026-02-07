@@ -4,7 +4,7 @@ const PreapprovedEmail = require('../models/PreapprovedEmail');
 const User = require('../models/User');
 const Client = require('../models/Client');
 const mongoose = require('mongoose');
-const { hasAdminRole, normalizeRoles } = require('../utils/roles');
+const { hasAdminRole, normalizeRoles, getAllowedRoles } = require('../utils/roles');
 const { uploadBuffer, deletePrefix, claimFolder } = require('../services/s3');
 
 const router = express.Router();
@@ -189,7 +189,7 @@ router.post('/clients/from-user/:id', requireAdmin, async (req, res) => {
     return res.status(404).json({ message: 'Usuario no encontrado' });
   }
 
-  const user = await User.findById(id).select('name email');
+  const user = await User.findById(id).select('name email roles');
   if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
 
   const exists = await Client.findOne({ user: id }).select('_id');
@@ -264,6 +264,17 @@ router.post('/clients/from-user/:id', requireAdmin, async (req, res) => {
         console.warn('[admin] Could not create/claim S3 folder for client:', e?.message || e);
       }
     })();
+
+    // Ensure the user obtained the client role unless already admin
+    try {
+      const roles = normalizeRoles(user.roles);
+      if (!roles.includes('admin') && !roles.includes('client')) {
+        user.roles = normalizeRoles('client', { defaultRole: 'client' });
+        await user.save();
+      }
+    } catch (roleErr) {
+      console.warn('[admin] No se pudo actualizar rol del usuario a client:', roleErr?.message || roleErr);
+    }
 
     return res.status(201).json({
       client: {
@@ -369,52 +380,68 @@ router.delete('/clients/:id', requireAdmin, async (req, res) => {
   }
 });
 
+function mapUserResponse(user) {
+  return {
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    roles: normalizeRoles(user.roles),
+    active: user.active !== false,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+}
+
+async function applySingleRoleToUser(user, roleName) {
+  const normalizedRole = String(roleName || '').trim().toLowerCase();
+  const allowed = getAllowedRoles();
+  if (!normalizedRole || !allowed.includes(normalizedRole)) {
+    const err = new Error('Rol no permitido');
+    err.statusCode = 400;
+    throw err;
+  }
+  user.roles = normalizeRoles(normalizedRole, { defaultRole: normalizedRole });
+  await user.save();
+  return user;
+}
+
+async function setUserRoleHandler(req, res, roleName) {
+  if (req.params.id === req.user?.sub) {
+    return res.status(400).json({ message: 'No puedes modificar tu propio rol' });
+  }
+  try {
+    const user = await User.findById(req.params.id).select('name email roles active createdAt updatedAt');
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    await applySingleRoleToUser(user, roleName);
+    return res.json({ user: mapUserResponse(user) });
+  } catch (err) {
+    if (err?.statusCode === 400) {
+      return res.status(400).json({ message: err.message });
+    }
+    console.error('[admin] set role error:', err?.message || err);
+    return res.status(500).json({ message: 'No se pudo actualizar el rol' });
+  }
+}
+
 // Otorgar rol admin a un usuario
 router.post('/users/:id/grant-admin', requireAdmin, async (req, res) => {
-  if (req.params.id === req.user?.sub) {
-    return res.status(400).json({ message: 'No puedes modificar tu propio rol' });
-  }
-  const user = await User.findById(req.params.id).select('name email roles active createdAt updatedAt');
-  if (!user) {
-    return res.status(404).json({ message: 'Usuario no encontrado' });
-  }
-  user.roles = normalizeRoles('admin', { defaultRole: 'admin' });
-  await user.save();
-  return res.json({
-    user: {
-      id: user._id.toString(),
-      name: user.name,
-      email: user.email,
-      roles: normalizeRoles(user.roles),
-      active: user.active !== false,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    },
-  });
+  return setUserRoleHandler(req, res, 'admin');
 });
 
-// Revocar rol admin a un usuario
+// Revocar rol admin a un usuario (lo deja como user)
 router.post('/users/:id/revoke-admin', requireAdmin, async (req, res) => {
-  if (req.params.id === req.user?.sub) {
-    return res.status(400).json({ message: 'No puedes modificar tu propio rol' });
+  return setUserRoleHandler(req, res, 'user');
+});
+
+// Asignar un rol arbitrario permitido (admin, lawyer, user, etc.)
+router.post('/users/:id/role', requireAdmin, async (req, res) => {
+  const requestedRole = String(req.body?.role || '').trim().toLowerCase();
+  if (!requestedRole) {
+    return res.status(400).json({ message: 'Rol requerido' });
   }
-  const user = await User.findById(req.params.id).select('name email roles active createdAt updatedAt');
-  if (!user) {
-    return res.status(404).json({ message: 'Usuario no encontrado' });
-  }
-  user.roles = normalizeRoles('user', { defaultRole: 'user' });
-  await user.save();
-  return res.json({
-    user: {
-      id: user._id.toString(),
-      name: user.name,
-      email: user.email,
-      roles: normalizeRoles(user.roles),
-      active: user.active !== false,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    },
-  });
+  return setUserRoleHandler(req, res, requestedRole);
 });
 
 // Eliminar un usuario
@@ -481,8 +508,5 @@ router.patch('/users/:id/active', requireAdmin, async (req, res) => {
 });
 
 module.exports = router;
-
-
-
 
 

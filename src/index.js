@@ -6,6 +6,12 @@ const dotenv = require('dotenv');
 const path = require('path');
 const mongoose = require('mongoose');
 
+const {
+  refreshAllowedRolesFromDb,
+  ensureDefaultRoles,
+  getAllowedRoles,
+} = require('./utils/roles');
+
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
@@ -60,14 +66,26 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/koop';
 
 mongoose
   .connect(MONGODB_URI, { autoIndex: true })
-  .then(() => {
-    console.log('MongoDB âœ“ conectado a ' + MONGODB_URI);
+  .then(async () => {
+    console.log('MongoDB connected to ' + MONGODB_URI);
+
+    const defaultRoles = [
+      { name: 'admin', displayName: 'Administrador', system: true, priority: 0 },
+      { name: 'lawyer', displayName: 'Abogado', system: false, priority: 1 },
+      { name: 'client', displayName: 'Cliente', system: false, priority: 2 },
+      { name: 'user', displayName: 'Usuario', system: false, priority: 3 },
+    ];
+
+    await ensureDefaultRoles(defaultRoles);
+    await refreshAllowedRolesFromDb();
+    console.log('[roles] Activos:', getAllowedRoles().join(', ') || '(ninguno)');
+
     app.listen(PORT, () => {
       console.log(`API listening on http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
-    console.error('MongoDB âœ— error:', err.message);
+    console.error('MongoDB connection error:', err.message);
     process.exit(1);
   });
 
