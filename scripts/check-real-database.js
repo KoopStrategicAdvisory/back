@@ -1,8 +1,12 @@
 const mongoose = require('mongoose');
+const path = require('path');
 const ClientDocument = require('../src/models/ClientDocument');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 // Usar la misma conexión que el servidor real
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/koop';
+const baseUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
+const databaseName = process.env.DATABASE_NAME || 'koop';
+const MONGODB_URI = baseUri.includes('?') ? baseUri.replace('/?', `/${databaseName}?`) : `${baseUri}/${databaseName}`;
 
 async function checkRealDatabase() {
   try {

@@ -11,7 +11,9 @@ async function main() {
   const emailArg = process.argv[2] || 'koopstrategicadvisory@gmail.com';
   const email = String(emailArg).toLowerCase().trim();
 
-  const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/auth_mvp';
+  const baseUri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+  const databaseName = process.env.DATABASE_NAME || 'auth_mvp';
+  const uri = baseUri.includes('?') ? baseUri.replace('/?', `/${databaseName}?`) : `${baseUri}/${databaseName}`;
   await mongoose.connect(uri, { autoIndex: true });
 
   try {

@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken');
 const PreapprovedEmail = require('../models/PreapprovedEmail');
 const User = require('../models/User');
 const Client = require('../models/Client');
+const Task = require('../models/Task');
+const ConsultationLog = require('../models/ConsultationLog');
 const mongoose = require('mongoose');
 const { hasAdminRole, normalizeRoles, getAllowedRoles } = require('../utils/roles');
 const { uploadBuffer, deletePrefix, claimFolder } = require('../services/s3');
@@ -21,6 +23,27 @@ function requireAdmin(req, res, next) {
       return res.status(403).json({ message: 'Se requiere rol admin' });
     }
     req.user = { ...payload, roles: normalizeRoles(payload.roles) };
+    next();
+  } catch (_e) {
+    return res.status(401).json({ message: 'Token invalido o expirado' });
+  }
+}
+
+function requireAdminOrLawyer(req, res, next) {
+  const auth = req.headers.authorization || '';
+  if (!auth.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'No token' });
+  }
+  try {
+    const token = auth.slice(7);
+    const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    const roles = Array.isArray(payload?.roles) ? payload.roles : [payload?.roles];
+    const normalized = roles.map((role) => String(role || '').trim().toLowerCase());
+    const allowed = normalized.includes('admin') || normalized.includes('lawyer');
+    if (!allowed) {
+      return res.status(403).json({ message: 'Se requiere rol admin o abogado' });
+    }
+    req.user = { ...payload, roles: normalized };
     next();
   } catch (_e) {
     return res.status(401).json({ message: 'Token invalido o expirado' });
@@ -74,6 +97,165 @@ router.get('/users', requireAdmin, async (_req, res) => {
     updatedAt: u.updatedAt,
   }));
   res.json({ items });
+});
+
+function buildDateRange(dateQuery) {
+  const date = dateQuery ? new Date(String(dateQuery)) : new Date();
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('Fecha inválida');
+  }
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end, isoDate: start.toISOString().slice(0, 10) };
+}
+
+// Listado de registros de consulta diarios
+router.get('/consultas', requireAdminOrLawyer, async (req, res) => {
+  try {
+    const dateQuery = String(req.query.date || '').trim();
+    const { start, end } = buildDateRange(dateQuery);
+    const records = await ConsultationLog.find({ createdAt: { $gte: start, $lt: end } })
+      .sort({ createdAt: 1 })
+      .lean();
+    res.json({ items: records.map((doc) => ({
+      id: doc._id.toString(),
+      processNumber: doc.processNumber,
+      result: doc.result,
+      observation: doc.observation,
+      createdAt: doc.createdAt,
+      createdBy: doc.createdBy,
+    })) });
+  } catch (err) {
+    console.error('Listado de consultas error:', err?.message || err);
+    return res.status(400).json({ message: err?.message || 'Fecha inválida' });
+  }
+});
+
+// Listado de radicados asignados al usuario logueado
+router.get('/consultas/radicados', requireAdminOrLawyer, async (req, res) => {
+  try {
+    const userId = req.user.sub || req.user.id || '';
+    if (!userId) {
+      return res.status(400).json({ message: 'Usuario no identificado' });
+    }
+
+    const items = await Task.aggregate([
+      {
+        $match: {
+          isActive: true,
+          radicado: { $exists: true, $ne: '' },
+          assignedTo: new mongoose.Types.ObjectId(userId),
+        },
+      },
+      { $group: { _id: '$radicado', count: { $sum: 1 }, lastUpdated: { $max: '$updatedAt' } } },
+      { $sort: { _id: 1 } },
+      { $limit: 500 },
+    ]);
+
+    res.json({
+      items: items.map((item) => ({
+        radicado: item._id,
+        count: item.count,
+        lastUpdated: item.lastUpdated,
+      })),
+    });
+  } catch (err) {
+    console.error('Listado de radicados error:', err?.message || err);
+    return res.status(500).json({ message: 'Error al listar radicados' });
+  }
+});
+
+// Crear registro de consulta
+router.post('/consultas', requireAdminOrLawyer, async (req, res) => {
+  try {
+    const { processNumber, result, observation } = req.body || {};
+    if (!processNumber || !result) {
+      return res.status(400).json({ message: 'Proceso y resultado son requeridos.' });
+    }
+
+    const allowedResults = ['Sin movimiento', 'Actuación nueva', 'Término corriendo'];
+    const normalizedResult = String(result).trim();
+    if (!allowedResults.includes(normalizedResult)) {
+      return res.status(400).json({ message: 'Resultado inválido.' });
+    }
+
+    const record = await ConsultationLog.create({
+      processNumber: String(processNumber).trim(),
+      result: normalizedResult,
+      observation: String(observation || '').trim(),
+      createdBy: {
+        id: req.user.sub || req.user.id || '',
+        name: req.user.name || req.user.email || 'Desconocido',
+        email: req.user.email || '',
+      },
+    });
+
+    return res.status(201).json({
+      item: {
+        id: record._id.toString(),
+        processNumber: record.processNumber,
+        result: record.result,
+        observation: record.observation,
+        createdAt: record.createdAt,
+        createdBy: record.createdBy,
+      },
+    });
+  } catch (err) {
+    console.error('Crear consulta error:', err?.message || err);
+    return res.status(500).json({ message: 'Error guardando el registro.' });
+  }
+});
+
+// Generar PDF diario de consultas
+router.get('/consultas/pdf', requireAdminOrLawyer, async (req, res) => {
+  try {
+    const dateQuery = String(req.query.date || '').trim();
+    const { start, end, isoDate } = buildDateRange(dateQuery);
+    const records = await ConsultationLog.find({ createdAt: { $gte: start, $lt: end } })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="bitacora-diaria-${isoDate}.pdf"`);
+
+    doc.pipe(res);
+
+    doc.fontSize(18).text('Bitácora diaria de revisión de procesos', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(12).text(`Fecha de la bitácora: ${isoDate}`);
+    doc.text(`Generado por: ${req.user.name || req.user.email || 'Desconocido'}`);
+    doc.text(`Correo: ${req.user.email || 'N/A'}`);
+    doc.moveDown(1);
+
+    if (!records.length) {
+      doc.text('No hay registros para esta fecha.', { align: 'left' });
+      doc.end();
+      return;
+    }
+
+    records.forEach((record, index) => {
+      doc.fontSize(12).fillColor('#111827').text(`${index + 1}. Proceso: ${record.processNumber}`, { continued: false });
+      doc.fontSize(11).fillColor('#334155').text(`   Resultado: ${record.result}`);
+      doc.text(`   Observación: ${record.observation || 'Sin observación'}`);
+      doc.text(`   Registrado por: ${record.createdBy?.name || record.createdBy?.email || 'N/A'}`);
+      doc.text(`   Fecha/hora: ${new Date(record.createdAt).toLocaleString('es-CO')}`);
+      doc.moveDown(0.5);
+      if (index < records.length - 1) {
+        doc.moveTo(doc.x, doc.y).lineTo(550, doc.y).strokeColor('#e2e8f0').stroke();
+        doc.moveDown(0.5);
+      }
+    });
+
+    doc.end();
+  } catch (err) {
+    console.error('Generar PDF de consultas error:', err?.message || err);
+    return res.status(500).json({ message: 'Error generando el PDF.' });
+  }
 });
 
 // Listado de clientes activos (excluye admins) — datos desde Client + User

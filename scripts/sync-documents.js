@@ -1,9 +1,13 @@
 const mongoose = require('mongoose');
+const path = require('path');
 const ClientDocument = require('../src/models/ClientDocument');
 const { listObjects, deleteObject } = require('../src/services/s3');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 // Configuración de la base de datos
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/koop';
+const baseUri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+const databaseName = process.env.DATABASE_NAME || 'koop';
+const MONGODB_URI = baseUri.includes('?') ? baseUri.replace('/?', `/${databaseName}?`) : `${baseUri}/${databaseName}`;
 
 async function syncDocuments() {
   try {
