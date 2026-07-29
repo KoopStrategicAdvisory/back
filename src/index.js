@@ -1,36 +1,65 @@
-﻿const express = require('express');
-const cors = require('cors');
+'use strict';
+const express      = require('express');
+const cors         = require('cors');
 const cookieParser = require('cookie-parser');
-const helmet = require('helmet');
-const dotenv = require('dotenv');
-const path = require('path');
-const mongoose = require('mongoose');
-
-const {
-  refreshAllowedRolesFromDb,
-  ensureDefaultRoles,
-  getAllowedRoles,
-} = require('./utils/roles');
+const helmet       = require('helmet');
+const dotenv       = require('dotenv');
+const path         = require('path');
+const yaml         = require('js-yaml');
+const fs           = require('fs');
 
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
+const { getDb } = require('./db/client');
+
 const app = express();
 
-// Quick visibility: confirm AWS region is loaded from env
 try {
   console.log('[ENV] AWS_REGION =', process.env.AWS_REGION || '(undefined)');
 } catch (_) {}
 
-app.use(helmet());
-app.use(
-  cors({
-    // Permitir todos los ori­genes reflejando el origin de la solicitud
-    origin: true,
-    credentials: true,
-  })
-);
+// Helmet con CSP relajada solo para la ruta /api/docs
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/docs')) return next();
+  helmet()(req, res, next);
+});
+app.use(helmet.hidePoweredBy());
+
+// OpenAPI spec + Scalar API Reference (CDN, sin dependencias ESM)
+const swaggerSpec = yaml.load(fs.readFileSync(path.join(__dirname, '../swagger.yaml'), 'utf8'));
+
+app.get('/api/openapi.json', (req, res) => res.json(swaggerSpec));
+
+app.get('/api/docs', (req, res) => {
+  res.type('text/html').send(`<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Koop API Docs</title>
+  <style>body { margin: 0; }</style>
+</head>
+<body>
+  <script
+    id="api-reference"
+    data-url="/api/openapi.json"
+    data-configuration='${JSON.stringify({
+      theme: 'purple',
+      layout: 'modern',
+      defaultHttpClient: { targetKey: 'javascript', clientKey: 'fetch' },
+      authentication: { preferredSecurityScheme: 'BearerAuth' },
+    })}'
+  ></script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>`);
+});
+
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+
+// Request logger
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
@@ -41,54 +70,38 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rutas de autenticacion
-const authRoutes = require('./routes/auth');
-app.use('/api/auth', authRoutes);
-const kpisRoutes = require('./routes/kpis');
-app.use('/api/kpis', kpisRoutes);
-const adminRoutes = require('./routes/admin');
-app.use('/api/admin', adminRoutes);
-const docsRoutes = require('./routes/docs');
-app.use('/api/docs', docsRoutes);
-const aiRoutes = require('./routes/ai');
-app.use('/api/ai', aiRoutes);
-const spotifyRoutes = require('./routes/spotify');
-app.use('/api/spotify', spotifyRoutes);
+app.get('/api/ping', (req, res) => res.status(200).json({ ok: true, pong: 'api' }));
 
-app.get('/api/ping', (req, res) => {
-  res.status(200).json({ ok: true, pong: 'api' });
-});
-
-// Conectar a MongoDB antes de levantar el servidor
 const PORT = process.env.PORT || 4000;
-const baseUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
-const databaseName = process.env.DATABASE_NAME || 'koop';
-const MONGODB_URI = baseUri.includes('?') ? baseUri.replace('/?', `/${databaseName}?`) : `${baseUri}/${databaseName}`;
 
-mongoose
-  .connect(MONGODB_URI, { autoIndex: true })
-  .then(async () => {
-    console.log('MongoDB connected to ' + MONGODB_URI);
+// Inicializar PGlite y luego montar features
+getDb()
+  .then(() => {
+    console.log('[db] PGlite listo');
 
-    const defaultRoles = [
-      { name: 'admin', displayName: 'Administrador', system: true, priority: 0 },
-      { name: 'lawyer', displayName: 'Abogado', system: false, priority: 1 },
-      { name: 'client', displayName: 'Cliente', system: false, priority: 2 },
-      { name: 'user', displayName: 'Usuario', system: false, priority: 3 },
-    ];
+    app.use('/api/auth',           require('./features/auth'));
+    app.use('/api/catalogos',      require('./features/catalogos'));
+    app.use('/api/clientes',       require('./features/clientes'));
+    app.use('/api/users',          require('./features/users'));
+    app.use('/api/expedientes',    require('./features/expedientes'));
+    app.use('/api/iter-procesal',  require('./features/iter-procesal'));
+    app.use('/api/tareas',         require('./features/tareas'));
+    app.use('/api/actuaciones',    require('./features/actuaciones'));
+    app.use('/api/notificaciones', require('./features/notificaciones'));
+    app.use('/api/audiencias',     require('./features/audiencias'));
+    app.use('/api/documentos',     require('./features/documentos'));
+    app.use('/api/financiero',     require('./features/financiero'));
+    app.use('/api/kanban',         require('./features/kanban'));
+    app.use('/api/colaboracion',   require('./features/colaboracion'));
 
-    await ensureDefaultRoles(defaultRoles);
-    await refreshAllowedRolesFromDb();
-    console.log('[roles] Activos:', getAllowedRoles().join(', ') || '(ninguno)');
+    // Error handler global — DEBE ir después de todas las rutas
+    app.use(require('./middleware/error-handler'));
 
     app.listen(PORT, () => {
-      console.log(`API listening on http://localhost:${PORT}`);
+      console.log(`API escuchando en http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
-    console.error('MongoDB connection error:', err.message);
+    console.error('[db] Error al inicializar PGlite:', err.message);
     process.exit(1);
   });
-
-
-

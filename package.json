@@ -4,7 +4,40 @@
     "main": "src/index.js",
     "scripts": {
         "dev": "nodemon src/index.js",
-        "start": "node src/index.js"
+        "start": "node src/index.js",
+        "test": "jest",
+        "test:watch": "jest --watch",
+        "test:coverage": "jest --coverage",
+        "test:functional": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.functional.config.js --runInBand --forceExit",
+        "test:all": "npm run test && npm run test:functional",
+        "db:server": "pglite-server --db=../.pgdata --port=5433 --max-connections=5",
+        "db:web": "node scripts/db-web-viewer.js"
+    },
+    "jest": {
+        "testEnvironment": "node",
+        "testMatch": [
+            "**/__tests__/**/*.test.js"
+        ],
+        "testPathIgnorePatterns": [
+            "/node_modules/",
+            "/__tests__/functional/"
+        ],
+        "clearMocks": true,
+        "resetMocks": true,
+        "reporters": [
+            "default",
+            [
+                "jest-html-reporter",
+                {
+                    "pageTitle": "Koop API — Reporte de Pruebas",
+                    "outputPath": "reports/test-report.html",
+                    "includeFailureMsg": true,
+                    "includeConsoleLog": false,
+                    "sort": "titleAsc",
+                    "dateFormat": "yyyy-mm-dd HH:MM:ss"
+                }
+            ]
+        ]
     },
     "keywords": [],
     "author": "",
@@ -13,20 +46,30 @@
     "dependencies": {
         "@aws-sdk/client-s3": "^3.657.0",
         "@aws-sdk/s3-request-presigner": "^3.657.0",
+        "@electric-sql/pglite": "^0.5.4",
+        "@scalar/express-api-reference": "^0.10.9",
         "axios": "^1.12.2",
         "bcrypt": "^6.0.0",
         "cookie-parser": "^1.4.7",
         "cors": "^2.8.5",
         "dotenv": "^17.2.2",
         "express": "^5.1.0",
+        "express-validator": "^7.3.2",
         "helmet": "^7.1.0",
+        "js-yaml": "^4.1.1",
         "jsonwebtoken": "^9.0.2",
         "mongoose": "^8.18.0",
         "multer": "^1.4.5-lts.1",
         "openai": "^4.57.0",
-        "pdfkit": "^0.16.0"
+        "pdfkit": "^0.16.0",
+        "swagger-ui-express": "^5.0.1"
     },
     "devDependencies": {
-        "nodemon": "^3.1.10"
+        "@electric-sql/pglite-socket": "^0.2.7",
+        "jest": "^30.4.2",
+        "jest-html-reporter": "^4.4.0",
+        "nodemon": "^3.1.10",
+        "pg": "^8.22.0",
+        "supertest": "^7.2.2"
     }
 }

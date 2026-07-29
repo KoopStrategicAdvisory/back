@@ -1,0 +1,201 @@
+{
+  "tiposProceso": [
+    { "NOMBRE": "Civil" },
+    { "NOMBRE": "Laboral" },
+    { "NOMBRE": "Penal" },
+    { "NOMBRE": "Familia" },
+    { "NOMBRE": "Administrativo" },
+    { "NOMBRE": "Comercial" },
+    { "NOMBRE": "Constitucional" }
+  ],
+  "subtiposProceso": [
+    { "NOMBRE": "Ejecutivo Singular" },
+    { "NOMBRE": "Ejecutivo Mixto" },
+    { "NOMBRE": "Verbal Sumario" },
+    { "NOMBRE": "Verbal" },
+    { "NOMBRE": "Sucesorio" },
+    { "NOMBRE": "Liquidación de Sociedad Conyugal" },
+    { "NOMBRE": "Pertenencia" },
+    { "NOMBRE": "Declarativo" },
+    { "NOMBRE": "Ordinario de Primera Instancia" },
+    { "NOMBRE": "Fuero Sindical" },
+    { "NOMBRE": "Calificación de Huelga" },
+    { "NOMBRE": "Ordinario Penal" },
+    { "NOMBRE": "Especial Abreviado" },
+    { "NOMBRE": "Divorcio" },
+    { "NOMBRE": "Alimentos" },
+    { "NOMBRE": "Guarda y Custodia" },
+    { "NOMBRE": "Adopción" },
+    { "NOMBRE": "Filiación" },
+    { "NOMBRE": "Acción de Nulidad" },
+    { "NOMBRE": "Nulidad y Restablecimiento del Derecho" },
+    { "NOMBRE": "Reparación Directa" },
+    { "NOMBRE": "Acción de Repetición" },
+    { "NOMBRE": "Proceso Concursal" },
+    { "NOMBRE": "Reorganización Empresarial" },
+    { "NOMBRE": "Revocatoria de Actos" },
+    { "NOMBRE": "Acción de Tutela" },
+    { "NOMBRE": "Acción Popular" },
+    { "NOMBRE": "Acción de Grupo" }
+  ],
+  "tiposPretension": [
+    { "NOMBRE": "Cobro de Suma de Dinero" },
+    { "NOMBRE": "Entrega de Bien Inmueble" },
+    { "NOMBRE": "Entrega de Bien Mueble" },
+    { "NOMBRE": "Declaración de Responsabilidad Civil Extracontractual" },
+    { "NOMBRE": "Nulidad de Acto Jurídico" },
+    { "NOMBRE": "Resolución de Contrato" },
+    { "NOMBRE": "Cumplimiento de Obligación" },
+    { "NOMBRE": "Reparación de Perjuicios" },
+    { "NOMBRE": "Declaración de Unión Marital de Hecho" },
+    { "NOMBRE": "Liquidación de Sociedad Patrimonial" },
+    { "NOMBRE": "Reconocimiento de Estado Civil" },
+    { "NOMBRE": "Protección de Derecho Fundamental" },
+    { "NOMBRE": "Nulidad de Acto Administrativo" },
+    { "NOMBRE": "Restablecimiento del Derecho" },
+    { "NOMBRE": "Indemnización de Perjuicios Administrativos" }
+  ],
+  "combinaciones": [
+    { "tipoProceso": "Civil", "subtipoProceso": "Ejecutivo Singular",                   "tipoPretension": "Cobro de Suma de Dinero" },
+    { "tipoProceso": "Civil", "subtipoProceso": "Ejecutivo Mixto",                      "tipoPretension": "Cobro de Suma de Dinero" },
+    { "tipoProceso": "Civil", "subtipoProceso": "Verbal",                               "tipoPretension": "Declaración de Responsabilidad Civil Extracontractual" },
+    { "tipoProceso": "Civil", "subtipoProceso": "Verbal",                               "tipoPretension": "Reparación de Perjuicios" },
+    { "tipoProceso": "Civil", "subtipoProceso": "Declarativo",                          "tipoPretension": "Nulidad de Acto Jurídico" },
+    { "tipoProceso": "Civil", "subtipoProceso": "Declarativo",                          "tipoPretension": "Resolución de Contrato" },
+    { "tipoProceso": "Civil", "subtipoProceso": "Sucesorio",                            "tipoPretension": "Liquidación de Sociedad Patrimonial" },
+    { "tipoProceso": "Civil", "subtipoProceso": "Pertenencia",                          "tipoPretension": "Entrega de Bien Inmueble" },
+    { "tipoProceso": "Civil", "subtipoProceso": "Verbal Sumario",                       "tipoPretension": "Cobro de Suma de Dinero" },
+    { "tipoProceso": "Laboral", "subtipoProceso": "Ordinario de Primera Instancia",     "tipoPretension": "Cobro de Suma de Dinero" },
+    { "tipoProceso": "Laboral", "subtipoProceso": "Ordinario de Primera Instancia",     "tipoPretension": "Reparación de Perjuicios" },
+    { "tipoProceso": "Laboral", "subtipoProceso": "Fuero Sindical",                     "tipoPretension": "Restablecimiento del Derecho" },
+    { "tipoProceso": "Penal",   "subtipoProceso": "Ordinario Penal",                    "tipoPretension": "Reparación de Perjuicios" },
+    { "tipoProceso": "Penal",   "subtipoProceso": "Especial Abreviado",                 "tipoPretension": "Reparación de Perjuicios" },
+    { "tipoProceso": "Familia", "subtipoProceso": "Divorcio",                           "tipoPretension": "Liquidación de Sociedad Patrimonial" },
+    { "tipoProceso": "Familia", "subtipoProceso": "Alimentos",                          "tipoPretension": "Cobro de Suma de Dinero" },
+    { "tipoProceso": "Familia", "subtipoProceso": "Guarda y Custodia",                  "tipoPretension": "Reconocimiento de Estado Civil" },
+    { "tipoProceso": "Familia", "subtipoProceso": "Filiación",                          "tipoPretension": "Reconocimiento de Estado Civil" },
+    { "tipoProceso": "Familia", "subtipoProceso": "Adopción",                           "tipoPretension": "Reconocimiento de Estado Civil" },
+    { "tipoProceso": "Administrativo", "subtipoProceso": "Acción de Nulidad",           "tipoPretension": "Nulidad de Acto Administrativo" },
+    { "tipoProceso": "Administrativo", "subtipoProceso": "Nulidad y Restablecimiento del Derecho", "tipoPretension": "Restablecimiento del Derecho" },
+    { "tipoProceso": "Administrativo", "subtipoProceso": "Reparación Directa",          "tipoPretension": "Indemnización de Perjuicios Administrativos" },
+    { "tipoProceso": "Administrativo", "subtipoProceso": "Acción de Repetición",        "tipoPretension": "Cobro de Suma de Dinero" },
+    { "tipoProceso": "Comercial", "subtipoProceso": "Proceso Concursal",                "tipoPretension": "Cobro de Suma de Dinero" },
+    { "tipoProceso": "Comercial", "subtipoProceso": "Reorganización Empresarial",       "tipoPretension": "Cumplimiento de Obligación" },
+    { "tipoProceso": "Comercial", "subtipoProceso": "Revocatoria de Actos",             "tipoPretension": "Nulidad de Acto Jurídico" },
+    { "tipoProceso": "Constitucional", "subtipoProceso": "Acción de Tutela",            "tipoPretension": "Protección de Derecho Fundamental" },
+    { "tipoProceso": "Constitucional", "subtipoProceso": "Acción Popular",              "tipoPretension": "Protección de Derecho Fundamental" },
+    { "tipoProceso": "Constitucional", "subtipoProceso": "Acción de Grupo",             "tipoPretension": "Reparación de Perjuicios" }
+  ],
+  "instancias": [
+    { "NOMBRE": "Primera Instancia" },
+    { "NOMBRE": "Segunda Instancia" },
+    { "NOMBRE": "Casación" },
+    { "NOMBRE": "Tutela" }
+  ],
+  "tiposActuacion": [
+    { "NOMBRE": "Auto de Trámite",                        "DESCRIPCION": "Auto que impulsa el proceso sin decidir de fondo" },
+    { "NOMBRE": "Auto Interlocutorio",                    "DESCRIPCION": "Auto que decide cuestiones incidentales del proceso" },
+    { "NOMBRE": "Sentencia",                              "DESCRIPCION": "Decisión definitiva que pone fin a la instancia" },
+    { "NOMBRE": "Memorial / Escrito",                     "DESCRIPCION": "Documento presentado por las partes al despacho judicial" },
+    { "NOMBRE": "Recurso de Reposición",                  "DESCRIPCION": "Impugnación de auto ante el mismo juez que lo profirió" },
+    { "NOMBRE": "Recurso de Apelación",                   "DESCRIPCION": "Impugnación ante el superior jerárquico" },
+    { "NOMBRE": "Recurso de Casación",                    "DESCRIPCION": "Impugnación extraordinaria ante el tribunal de casación" },
+    { "NOMBRE": "Audiencia Inicial",                      "DESCRIPCION": "Audiencia de saneamiento, fijación del litigio y conciliación (Art. 372 CGP)" },
+    { "NOMBRE": "Audiencia de Instrucción y Juzgamiento", "DESCRIPCION": "Audiencia de práctica de pruebas y alegatos (Art. 373 CGP)" },
+    { "NOMBRE": "Audiencia de Conciliación",              "DESCRIPCION": "Diligencia de conciliación extrajudicial o judicial" },
+    { "NOMBRE": "Notificación Personal",                  "DESCRIPCION": "Notificación efectuada directamente a la parte o su apoderado" },
+    { "NOMBRE": "Embargo y Secuestro",                    "DESCRIPCION": "Medida cautelar sobre bienes del demandado" },
+    { "NOMBRE": "Práctica de Pruebas",                    "DESCRIPCION": "Decreto y práctica de los medios probatorios admitidos" }
+  ],
+  "tiposDocumento": [
+    { "NOMBRE": "Demanda" },
+    { "NOMBRE": "Contestación de Demanda" },
+    { "NOMBRE": "Poder Especial" },
+    { "NOMBRE": "Auto" },
+    { "NOMBRE": "Sentencia de Primera Instancia" },
+    { "NOMBRE": "Sentencia de Segunda Instancia" },
+    { "NOMBRE": "Acta de Audiencia" },
+    { "NOMBRE": "Memorial de Pruebas" },
+    { "NOMBRE": "Recurso" },
+    { "NOMBRE": "Certificado" },
+    { "NOMBRE": "Contrato" },
+    { "NOMBRE": "Comprobante de Pago" },
+    { "NOMBRE": "Notificación" },
+    { "NOMBRE": "Oficio" },
+    { "NOMBRE": "Dictamen Pericial" }
+  ],
+  "tiposNotificacion": [
+    {
+      "NOMBRE": "Notificación Personal",
+      "FUNDAMENTO_LEGAL": "Art. 291 CGP",
+      "DIAS_SURTIMIENTO": 3,
+      "DESCRIPCION": "Se surte personalmente al interesado o su apoderado en el juzgado o lugar de trabajo"
+    },
+    {
+      "NOMBRE": "Notificación por Aviso",
+      "FUNDAMENTO_LEGAL": "Art. 292 CGP",
+      "DIAS_SURTIMIENTO": 3,
+      "DESCRIPCION": "Se realiza mediante aviso enviado al correo electrónico o dirección registrada en el proceso"
+    },
+    {
+      "NOMBRE": "Notificación por Estado",
+      "FUNDAMENTO_LEGAL": "Art. 295 CGP",
+      "DIAS_SURTIMIENTO": 0,
+      "DESCRIPCION": "Se surte al día siguiente de la fijación del estado en secretaría"
+    },
+    {
+      "NOMBRE": "Notificación por Conducta Concluyente",
+      "FUNDAMENTO_LEGAL": "Art. 301 CGP",
+      "DIAS_SURTIMIENTO": 0,
+      "DESCRIPCION": "Se surte cuando la parte realiza una actuación que implica conocimiento de la decisión"
+    },
+    {
+      "NOMBRE": "Notificación por Edicto",
+      "FUNDAMENTO_LEGAL": "Art. 108 CGP",
+      "DIAS_SURTIMIENTO": 0,
+      "DESCRIPCION": "Se utiliza cuando se desconoce el paradero de la persona a notificar"
+    },
+    {
+      "NOMBRE": "Notificación por Correo",
+      "FUNDAMENTO_LEGAL": "Art. 293 CGP",
+      "DIAS_SURTIMIENTO": 3,
+      "DESCRIPCION": "Se realiza mediante correo electrónico a la dirección electrónica registrada"
+    }
+  ],
+  "mediosNotificacion": [
+    { "NOMBRE": "Estrados" },
+    { "NOMBRE": "Correo Electrónico" },
+    { "NOMBRE": "Correo Certificado" },
+    { "NOMBRE": "Físico - Sede Judicial" },
+    { "NOMBRE": "Mensaje de Datos" }
+  ],
+  "estadosProceso": [
+    { "NOMBRE": "Activo",                       "DESCRIPCION": "Proceso en curso con actuaciones pendientes" },
+    { "NOMBRE": "Suspendido",                   "DESCRIPCION": "Proceso temporalmente paralizado por orden judicial o acuerdo de partes" },
+    { "NOMBRE": "En Conciliación",              "DESCRIPCION": "Proceso en etapa de conciliación o negociación entre las partes" },
+    { "NOMBRE": "Terminado por Sentencia",      "DESCRIPCION": "Proceso finalizado con sentencia ejecutoriada" },
+    { "NOMBRE": "Terminado por Desistimiento",  "DESCRIPCION": "Proceso finalizado por desistimiento de la parte actora" },
+    { "NOMBRE": "Terminado por Transacción",    "DESCRIPCION": "Proceso finalizado por acuerdo transaccional entre las partes" },
+    { "NOMBRE": "Archivado",                    "DESCRIPCION": "Proceso archivado definitivamente" }
+  ],
+  "estadosEtapa": [
+    { "NOMBRE": "Pendiente" },
+    { "NOMBRE": "En Curso" },
+    { "NOMBRE": "Completada" },
+    { "NOMBRE": "Suspendida" },
+    { "NOMBRE": "Vencida" }
+  ],
+  "estadosTarea": [
+    { "NOMBRE": "Pendiente" },
+    { "NOMBRE": "En Progreso" },
+    { "NOMBRE": "Completada" },
+    { "NOMBRE": "Cancelada" },
+    { "NOMBRE": "Vencida" }
+  ],
+  "prioridades": [
+    { "NOMBRE": "Crítica", "NIVEL": 0 },
+    { "NOMBRE": "Alta",    "NIVEL": 1 },
+    { "NOMBRE": "Media",   "NIVEL": 2 },
+    { "NOMBRE": "Baja",    "NIVEL": 3 }
+  ]
+}

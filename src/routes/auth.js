@@ -124,7 +124,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Email y password son requeridos.' });
     }
 
-    const normalizedEmail = String(email).toLowerCase().trim();
+    const normalizedEmail = String(email).toLowerCase().trim().replace();
     const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(401).json({ message: 'Credenciales invalidas.' });

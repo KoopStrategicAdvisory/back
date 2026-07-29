@@ -1,0 +1,277 @@
+<html><head><meta charset="utf-8"/><title>Koop API — Reporte de Pruebas Funcionales</title><style type="text/css">:root {
+  --text-primary: #111;
+  --text-secondary: #4f4f4f;
+  --success: #006633;
+  --success-bright: #80ffbf;
+  --danger: #cc071e;
+  --danger-bright: #fbdfe0;
+  --warning: #995c00;
+  --warning-bright: #ffeea8;
+  --panel: #eee;
+  --border: #949494;
+  --disabled: #6b6b6b;
+}
+
+html,
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 16px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-primary);
+}
+body {
+  padding: 2rem 1rem;
+}
+.jesthtml-content {
+  margin: 0 auto;
+  max-width: 70rem;
+}
+header {
+  display: flex;
+  align-items: center;
+}
+#title {
+  margin: 0;
+  flex-grow: 1;
+}
+#logo {
+  height: 4rem;
+}
+#timestamp {
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+#metadata-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.additional-information-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+}
+
+/** SUMMARY */
+#summary {
+  color: var(--text-primary);
+  display: flex;
+  font-family: monospace;
+  font-size: 1rem;
+}
+#summary > div {
+  margin-right: 0.5rem;
+  background: var(--panel);
+  padding: 1rem;
+  min-width: 15rem;
+}
+#summary > div:last-child {
+  margin-right: 0;
+}
+@media only screen and (max-width: 720px) {
+  #summary {
+    flex-direction: column;
+  }
+  #summary > div {
+    margin-right: 0;
+    margin-top: 1rem;
+  }
+  #summary > div:first-child {
+    margin-top: 0;
+  }
+}
+
+.summary-total {
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+.summary-passed {
+  color: var(--success);
+  border-left: 0.4rem solid var(--success);
+  padding-left: 0.5rem;
+  margin-bottom: 0.15rem;
+}
+.summary-failed,
+.summary-obsolete-snapshots {
+  color: var(--danger);
+  border-left: 0.4rem solid var(--danger);
+  padding-left: 0.5rem;
+  margin-bottom: 0.15rem;
+}
+.summary-pending {
+  color: var(--warning);
+  border-left: 0.4rem solid var(--warning);
+  padding-left: 0.5rem;
+  margin-bottom: 0.15rem;
+}
+.summary-empty {
+  color: var(--disabled);
+  border-left: 0.4rem solid var(--disabled);
+  margin-bottom: 0.15rem;
+}
+
+.test-result {
+  padding: 1rem;
+  margin-bottom: 0.25rem;
+}
+.test-result:last-child {
+  border: 0;
+}
+.test-result.passed {
+  background-color: var(--success-bright);
+  color: var(--success);
+}
+.test-result.failed {
+  background-color: var(--danger-bright);
+  color: var(--danger);
+}
+.test-result.pending {
+  background-color: var(--warning-bright);
+  color: var(--warning);
+}
+
+.test-info {
+  display: flex;
+  justify-content: space-between;
+}
+.test-suitename {
+  width: 20%;
+  text-align: left;
+  font-weight: bold;
+  word-break: break-word;
+}
+.test-title {
+  width: 40%;
+  text-align: left;
+  font-style: italic;
+}
+.test-status {
+  width: 20%;
+  text-align: right;
+}
+.test-duration {
+  width: 10%;
+  text-align: right;
+  font-size: 0.85rem;
+}
+
+.failureMessages {
+  padding: 0 1rem;
+  margin-top: 1rem;
+  border-top: 1px dashed var(--danger);
+}
+.failureMessages.suiteFailure {
+  border-top: none;
+}
+.failureMsg {
+  white-space: pre-wrap;
+  white-space: -moz-pre-wrap;
+  white-space: -pre-wrap;
+  white-space: -o-pre-wrap;
+  word-wrap: break-word;
+}
+
+.suite-container {
+  margin-bottom: 1rem;
+}
+.suite-info {
+  padding: 1rem;
+  background-color: var(--panel);
+  color: var(--text-secondary);
+  border: 0.15rem solid;
+  border-color: var(--panel);
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+.suite-info:hover {
+  border-color: var(--border);
+  cursor: pointer;
+}
+.suite-info .suite-path {
+  word-break: break-all;
+  flex-grow: 1;
+  font-family: monospace;
+  font-size: 1rem;
+}
+.suite-info .suite-time {
+  margin-left: 1rem;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.85rem;
+}
+.suite-info .suite-time.warn {
+  background-color: var(--danger);
+  color: #fff;
+}
+.suite-info:before {
+  content: "\2303";
+  display: inline-block;
+  margin-right: 1rem;
+  transform: rotate(180deg) translateY(0.15rem);
+}
+.suite-container[open] .suite-info:before {
+  transform: rotate(0deg) translateY(0.15rem);
+}
+
+/* CONSOLE LOGS */
+.suite-consolelog {
+  margin-bottom: 0.25rem;
+  padding: 1rem;
+  background-color: var(--panel);
+}
+.suite-consolelog-header {
+  font-weight: bold;
+}
+.suite-consolelog-item {
+  padding: 0.5rem;
+}
+.suite-consolelog-item pre {
+  margin: 0.5rem 0;
+  white-space: pre-wrap;
+  white-space: -moz-pre-wrap;
+  white-space: -pre-wrap;
+  white-space: -o-pre-wrap;
+  word-wrap: break-word;
+}
+.suite-consolelog-item-origin {
+  color: var(--text-secondary);
+  font-weight: bold;
+}
+.suite-consolelog-item-message {
+  color: var(--text-primary);
+  font-size: 1rem;
+  padding: 0 0.5rem;
+}
+
+/* OBSOLETE SNAPSHOTS */
+.suite-obsolete-snapshots {
+  margin-bottom: 0.25rem;
+  padding: 1rem;
+  background-color: var(--danger-bright);
+  color: var(--danger);
+}
+.suite-obsolete-snapshots-header {
+  font-weight: bold;
+}
+.suite-obsolete-snapshots-item {
+  padding: 0.5rem;
+}
+.suite-obsolete-snapshots-item pre {
+  margin: 0.5rem 0;
+  white-space: pre-wrap;
+  white-space: -moz-pre-wrap;
+  white-space: -pre-wrap;
+  white-space: -o-pre-wrap;
+  word-wrap: break-word;
+}
+.suite-obsolete-snapshots-item-message {
+  color: var(--text-primary);
+  font-size: 1rem;
+  padding: 0 0.5rem;
+}
+</style></head><body><main class="jesthtml-content"><header><h1 id="title">Koop API — Reporte de Pruebas Funcionales</h1></header><section id="metadata-container"><div id="timestamp">Started: 2026-07-10 17:17:05</div><div id="summary"><div id="suite-summary"><div class="summary-total">Suites (5)</div><div class="summary-passed ">5 passed</div><div class="summary-failed  summary-empty">0 failed</div><div class="summary-pending  summary-empty">0 pending</div></div><div id="test-summary"><div class="summary-total">Tests (112)</div><div class="summary-passed ">112 passed</div><div class="summary-failed  summary-empty">0 failed</div><div class="summary-pending  summary-empty">0 pending</div></div></div></section><details id="suite-1" class="suite-container" open=""><summary class="suite-info"><div class="suite-path">C:\Workspace\koop\back\__tests__\functional\expedientes.functional.test.js</div><div class="suite-time">2.456s</div></summary><div class="suite-tests"><div class="test-result passed"><div class="test-info"><div class="test-suitename">Eliminación de expediente</div><div class="test-title">DELETE /api/expedientes/:id — abogado elimina → 204</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Etapas del expediente</div><div class="test-title">DELETE /api/expedientes/:id/etapas/:etapaId → 204</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de clientes</div><div class="test-title">GET /api/clientes — lista de clientes → 200</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de clientes</div><div class="test-title">GET /api/clientes — sin token → 401</div><div class="test-status">passed</div><div class="test-duration">0.003s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Eliminación de expediente</div><div class="test-title">GET /api/expedientes — el eliminado no aparece en la lista activa</div><div class="test-status">passed</div><div class="test-duration">0.021s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de expedientes</div><div class="test-title">GET /api/expedientes — lista → 200 + contiene el creado</div><div class="test-status">passed</div><div class="test-duration">0.028s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de expedientes</div><div class="test-title">GET /api/expedientes/9999 — inexistente → 404</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Eliminación de expediente</div><div class="test-title">GET /api/expedientes/:id después de eliminar → 200 con active false</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de expedientes</div><div class="test-title">GET /api/expedientes/:id → 200 con datos del cliente</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Etapas del expediente</div><div class="test-title">GET /api/expedientes/:id/etapas → 200 + lista</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de expedientes</div><div class="test-title">GET /api/expedientes?search=EXP-2026 — filtro por texto → 200</div><div class="test-status">passed</div><div class="test-duration">0.019s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de clientes</div><div class="test-title">POST /api/clientes — abogado crea cliente → 201</div><div class="test-status">passed</div><div class="test-duration">0.034s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de expedientes</div><div class="test-title">POST /api/expedientes — abogado crea expediente → 201</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de expedientes</div><div class="test-title">POST /api/expedientes — falta numero_de_expediente → 400</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de expedientes</div><div class="test-title">POST /api/expedientes — número duplicado → 409</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de expedientes</div><div class="test-title">POST /api/expedientes — sin auth → 401</div><div class="test-status">passed</div><div class="test-duration">0.004s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Etapas del expediente</div><div class="test-title">POST /api/expedientes/:id/etapas → 201</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de expedientes</div><div class="test-title">PUT /api/expedientes/:id — actualizar juzgado → 200</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Etapas del expediente</div><div class="test-title">PUT /api/expedientes/:id/etapas/:etapaId — actualizar observaciones → 200</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div></div></details><details id="suite-2" class="suite-container" open=""><summary class="suite-info"><div class="suite-path">C:\Workspace\koop\back\__tests__\functional\flujo-integral.functional.test.js</div><div class="suite-time">3.839s</div></summary><div class="suite-tests"><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 10: Audiencias próximas</div><div class="test-title">Abogado agenda audiencia próxima → 201</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 3-5: Cliente y expediente</div><div class="test-title">Abogado apertura expediente para el cliente → 201</div><div class="test-status">passed</div><div class="test-duration">0.016s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 6-8: Tareas y asignación</div><div class="test-title">Abogado completa la tarea → 200 + estado actualizado</div><div class="test-status">passed</div><div class="test-duration">0.01s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 3-5: Cliente y expediente</div><div class="test-title">Abogado crea cliente → 201</div><div class="test-status">passed</div><div class="test-duration">0.011s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 6-8: Tareas y asignación</div><div class="test-title">Abogado crea tarea para el expediente → 201</div><div class="test-status">passed</div><div class="test-duration">0.013s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 1-2: Onboarding del abogado</div><div class="test-title">Abogado puede iniciar sesión → 200 + rol lawyer</div><div class="test-status">passed</div><div class="test-duration">0.014s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 9: Actuaciones del expediente</div><div class="test-title">Abogado registra actuación → 201</div><div class="test-status">passed</div><div class="test-duration">0.01s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 1-2: Onboarding del abogado</div><div class="test-title">Admin asigna rol lawyer → 201</div><div class="test-status">passed</div><div class="test-duration">0.01s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 1-2: Onboarding del abogado</div><div class="test-title">Admin crea usuario abogado → 201</div><div class="test-status">passed</div><div class="test-duration">0.065s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 11-13: Honorarios y pagos</div><div class="test-title">Admin registra honorario para el expediente → 201</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 11-13: Honorarios y pagos</div><div class="test-title">Admin registra pago del cliente → 201</div><div class="test-status">passed</div><div class="test-duration">0.012s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 9: Actuaciones del expediente</div><div class="test-title">GET /api/actuaciones?id_expediente=X → 200 + contiene la actuación</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 10: Audiencias próximas</div><div class="test-title">GET /api/audiencias/proximas — audiencia del mañana aparece</div><div class="test-status">passed</div><div class="test-duration">0.011s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 14-16: Vistas globales y dashboard</div><div class="test-title">GET /api/catalogos/roles — admin consulta catálogo de roles → 200</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 14-16: Vistas globales y dashboard</div><div class="test-title">GET /api/expedientes — admin ve el expediente integral → 200</div><div class="test-status">passed</div><div class="test-duration">0.025s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 3-5: Cliente y expediente</div><div class="test-title">GET /api/expedientes/:id — expediente creado tiene datos del cliente</div><div class="test-status">passed</div><div class="test-duration">0.015s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 11-13: Honorarios y pagos</div><div class="test-title">GET /api/financiero/resumen/:idExpediente → 200 con totales</div><div class="test-status">passed</div><div class="test-duration">0.008s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 6-8: Tareas y asignación</div><div class="test-title">GET /api/tareas/mis-tareas — abogado ve su tarea asignada</div><div class="test-status">passed</div><div class="test-duration">0.008s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Paso 14-16: Vistas globales y dashboard</div><div class="test-title">GET /api/tareas/proximas-vencer → 200 (lista con la tarea creada)</div><div class="test-status">passed</div><div class="test-duration">0.008s</div></div></div></div></details><details id="suite-3" class="suite-container" open=""><summary class="suite-info"><div class="suite-path">C:\Workspace\koop\back\__tests__\functional\tareas.functional.test.js</div><div class="suite-time">2.466s</div></summary><div class="suite-tests"><div class="test-result passed"><div class="test-info"><div class="test-suitename">Eliminar tarea</div><div class="test-title">DELETE /api/tareas/:id → 204</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Checklist de tarea</div><div class="test-title">DELETE /api/tareas/:id/checklist/:itemId → 204</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Consultar tareas</div><div class="test-title">GET /api/tareas — lista general → 200</div><div class="test-status">passed</div><div class="test-duration">0.012s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Consultar tareas</div><div class="test-title">GET /api/tareas/9999 — inexistente → 404</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Eliminar tarea</div><div class="test-title">GET /api/tareas/:id después de eliminar → 200 con active false</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Consultar tareas</div><div class="test-title">GET /api/tareas/:id → 200</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Checklist de tarea</div><div class="test-title">GET /api/tareas/:id/checklist — ahora tiene 1 item → 200</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Checklist de tarea</div><div class="test-title">GET /api/tareas/:id/checklist — lista vacía → 200</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Consultar tareas</div><div class="test-title">GET /api/tareas/mis-tareas — tareas del usuario autenticado → 200</div><div class="test-status">passed</div><div class="test-duration">0.008s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Consultar tareas</div><div class="test-title">GET /api/tareas/proximas-vencer → 200</div><div class="test-status">passed</div><div class="test-duration">0.008s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Consultar tareas</div><div class="test-title">GET /api/tareas?id_expediente=X — filtro por expediente → 200</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Crear tareas</div><div class="test-title">POST /api/tareas — sin auth → 401</div><div class="test-status">passed</div><div class="test-duration">0.026s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Crear tareas</div><div class="test-title">POST /api/tareas — sin título → 400</div><div class="test-status">passed</div><div class="test-duration">0.01s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Crear tareas</div><div class="test-title">POST /api/tareas — tarea simple sin expediente → 201</div><div class="test-status">passed</div><div class="test-duration">0.011s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Crear tareas</div><div class="test-title">POST /api/tareas — tarea vinculada a expediente → 201</div><div class="test-status">passed</div><div class="test-duration">0.008s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Checklist de tarea</div><div class="test-title">POST /api/tareas/:id/checklist — agregar item → 201</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Actualizar tareas</div><div class="test-title">PUT /api/tareas/9999 — inexistente → 404</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Actualizar tareas</div><div class="test-title">PUT /api/tareas/:id — actualizar descripción → 200</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Actualizar tareas</div><div class="test-title">PUT /api/tareas/:id — cambiar estado a completada → 200</div><div class="test-status">passed</div><div class="test-duration">0.008s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Checklist de tarea</div><div class="test-title">PUT /api/tareas/:id/checklist/:itemId — marcar como completado → 200</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div></div></details><details id="suite-4" class="suite-container" open=""><summary class="suite-info"><div class="suite-path">C:\Workspace\koop\back\__tests__\functional\usuarios.functional.test.js</div><div class="suite-time">2.432s</div></summary><div class="suite-tests"><div class="test-result passed"><div class="test-info"><div class="test-suitename">Autenticación</div><div class="test-title">GET /api/auth/me — con token admin → 200</div><div class="test-status">passed</div><div class="test-duration">0.008s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Autenticación</div><div class="test-title">GET /api/auth/me — sin token → 401</div><div class="test-status">passed</div><div class="test-duration">0.004s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de usuarios</div><div class="test-title">GET /api/users — admin autenticado → 200 + lista</div><div class="test-status">passed</div><div class="test-duration">0.008s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de usuarios</div><div class="test-title">GET /api/users — sin token → 401</div><div class="test-status">passed</div><div class="test-duration">0.004s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de usuarios</div><div class="test-title">GET /api/users/9999 — ID inexistente → 404</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de usuarios</div><div class="test-title">GET /api/users/:id — abogado ahora tiene rol lawyer</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de usuarios</div><div class="test-title">GET /api/users/:id — obtener abogado → 200</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Login de usuario abogado</div><div class="test-title">POST /api/auth/login — abogado correcto → 200</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Autenticación</div><div class="test-title">POST /api/auth/login — admin correcto → 200 + accessToken</div><div class="test-status">passed</div><div class="test-duration">0.037s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Autenticación</div><div class="test-title">POST /api/auth/login — contraseña incorrecta → 401</div><div class="test-status">passed</div><div class="test-duration">0.008s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Auto-registro y activación</div><div class="test-title">POST /api/auth/login — cuenta inactiva → 403</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Autenticación</div><div class="test-title">POST /api/auth/login — email inexistente → 401</div><div class="test-status">passed</div><div class="test-duration">0.005s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Auto-registro y activación</div><div class="test-title">POST /api/auth/register — email duplicado → 409</div><div class="test-status">passed</div><div class="test-duration">0.005s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Auto-registro y activación</div><div class="test-title">POST /api/auth/register — público, cuenta inactiva → 201</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de usuarios</div><div class="test-title">POST /api/users — admin crea abogado → 201</div><div class="test-status">passed</div><div class="test-duration">0.012s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de usuarios</div><div class="test-title">POST /api/users — datos inválidos → 400</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de usuarios</div><div class="test-title">POST /api/users — email duplicado → 409</div><div class="test-status">passed</div><div class="test-duration">0.009s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de usuarios</div><div class="test-title">POST /api/users/:id/roles — asignar rol lawyer → 201</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Gestión de usuarios</div><div class="test-title">PUT /api/users/:id — admin actualiza abogado → 200</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div></div></details><details id="suite-5" class="suite-container" open=""><summary class="suite-info"><div class="suite-path">C:\Workspace\koop\back\__tests__\integration\repositories.integration.test.js</div><div class="suite-time">2.321s</div></summary><div class="suite-tests"><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio users</div><div class="test-title">addRole asigna rol y getRoles lo devuelve</div><div class="test-status">passed</div><div class="test-duration">0.004s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio clientes</div><div class="test-title">count devuelve el total de clientes activos</div><div class="test-status">passed</div><div class="test-duration">0.001s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio expedientes</div><div class="test-title">create inserta expediente con FK a usuario</div><div class="test-status">passed</div><div class="test-duration">0.005s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio tareas</div><div class="test-title">create inserta tarea y retorna fila con JOIN</div><div class="test-status">passed</div><div class="test-duration">0.006s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio clientes</div><div class="test-title">create inserta un cliente y retorna la fila</div><div class="test-status">passed</div><div class="test-duration">0.003s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio expedientes</div><div class="test-title">create rechaza número de expediente duplicado</div><div class="test-status">passed</div><div class="test-duration">0.003s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio users</div><div class="test-title">create respeta constraint UNIQUE en email</div><div class="test-status">passed</div><div class="test-duration">0.136s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio tareas</div><div class="test-title">createChecklistItem inserta item en tarea</div><div class="test-status">passed</div><div class="test-duration">0.003s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio expedientes</div><div class="test-title">createEtapa inserta etapa y retorna fila</div><div class="test-status">passed</div><div class="test-duration">0.004s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio financiero</div><div class="test-title">createHonorario inserta con FK a expediente</div><div class="test-status">passed</div><div class="test-duration">0.003s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio financiero</div><div class="test-title">createPago registra pago vinculado al honorario</div><div class="test-status">passed</div><div class="test-duration">0.004s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio users</div><div class="test-title">findAll devuelve solo usuarios activos por defecto</div><div class="test-status">passed</div><div class="test-duration">0.005s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio clientes</div><div class="test-title">findAll filtra por búsqueda de texto</div><div class="test-status">passed</div><div class="test-duration">0.001s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio tareas</div><div class="test-title">findAll filtra por id_expediente</div><div class="test-status">passed</div><div class="test-duration">0.003s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio expedientes</div><div class="test-title">findAll filtra por id_usuario y respeta active=true</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio expedientes</div><div class="test-title">findAll filtro search busca por numero_de_expediente</div><div class="test-status">passed</div><div class="test-duration">0.012s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio expedientes</div><div class="test-title">findAll no devuelve expedientes eliminados (active=true)</div><div class="test-status">passed</div><div class="test-duration">0.015s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio clientes</div><div class="test-title">findAll pagina correctamente</div><div class="test-status">passed</div><div class="test-duration">0.002s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio users</div><div class="test-title">findByEmail es case-insensitive</div><div class="test-status">passed</div><div class="test-duration">0.002s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio users</div><div class="test-title">findByEmail retorna el usuario con sus roles</div><div class="test-status">passed</div><div class="test-duration">0.002s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio expedientes</div><div class="test-title">findById devuelve JOIN con nombre_cliente</div><div class="test-status">passed</div><div class="test-duration">0.004s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio users</div><div class="test-title">findById retorna null para ID inexistente</div><div class="test-status">passed</div><div class="test-duration">0.002s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio tareas</div><div class="test-title">findChecklist no devuelve items inactivos</div><div class="test-status">passed</div><div class="test-duration">0.002s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio expedientes</div><div class="test-title">findEtapas devuelve etapas del expediente</div><div class="test-status">passed</div><div class="test-duration">0.003s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio financiero</div><div class="test-title">findHonorarios lista los honorarios del expediente</div><div class="test-status">passed</div><div class="test-duration">0.002s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio tareas</div><div class="test-title">findMisTareas devuelve solo las del usuario asignado</div><div class="test-status">passed</div><div class="test-duration">0.002s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio financiero</div><div class="test-title">getResumen agrega totales correctamente</div><div class="test-status">passed</div><div class="test-duration">0.002s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio users</div><div class="test-title">removeRole elimina el rol</div><div class="test-status">passed</div><div class="test-duration">0.005s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio users</div><div class="test-title">softDelete desactiva al usuario</div><div class="test-status">passed</div><div class="test-duration">0.012s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio expedientes</div><div class="test-title">softDelete desactiva el expediente</div><div class="test-status">passed</div><div class="test-duration">0.005s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio tareas</div><div class="test-title">softDeleteChecklistItem desactiva el item</div><div class="test-status">passed</div><div class="test-duration">0.002s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio tareas</div><div class="test-title">update cambia estado a Completada</div><div class="test-status">passed</div><div class="test-duration">0.007s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio expedientes</div><div class="test-title">update modifica campo permitido</div><div class="test-status">passed</div><div class="test-duration">0.002s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio users</div><div class="test-title">update modifica campos permitidos</div><div class="test-status">passed</div><div class="test-duration">0.003s</div></div></div><div class="test-result passed"><div class="test-info"><div class="test-suitename">Repositorio tareas</div><div class="test-title">updateChecklistItem marca como completado</div><div class="test-status">passed</div><div class="test-duration">0.003s</div></div></div></div></details></main></body></html>
