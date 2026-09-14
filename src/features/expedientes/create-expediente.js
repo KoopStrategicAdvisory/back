@@ -7,7 +7,10 @@ const { expedientes } = require('../../repositories');
 const rules = [
   body('numero_de_expediente').trim().notEmpty().withMessage('El número de expediente es requerido.'),
   body('id_cliente').optional().isInt({ min: 1 }),
-  body('id_combo').optional().isInt({ min: 1 }),
+  // La columna es NOT NULL en el esquema (expediente.id_tipo_proc_subtipo_proc_tipo_pre);
+  // antes se validaba un campo 'id_combo' que el repositorio nunca lee.
+  body('id_tipo_proc_subtipo_proc_tipo_pre').isInt({ min: 1 })
+    .withMessage('La materia (tipo de proceso/subtipo/pretensión) es requerida.'),
   body('id_estado_proceso').optional().isInt({ min: 1 }),
 ];
 
