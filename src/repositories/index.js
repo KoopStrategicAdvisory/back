@@ -13,6 +13,7 @@ const documentos   = require('./documentos');
 const financiero   = require('./financiero');
 const kanban       = require('./kanban');
 const colaboracion = require('./colaboracion');
+const auditoria    = require('./auditoria');
 
 module.exports = {
   catalogos,
@@ -28,4 +29,5 @@ module.exports = {
   financiero,
   kanban,
   colaboracion,
+  auditoria,
 };

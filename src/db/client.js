@@ -33,6 +33,13 @@ async function _bootstrap(db) {
   const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   await db.exec(sql);
   console.log('[db] Schema inicializado correctamente');
+
+  const seedPath = path.join(__dirname, 'seed.sql');
+  if (fs.existsSync(seedPath)) {
+    const seedSql = fs.readFileSync(seedPath, 'utf8');
+    await db.exec(seedSql);
+    console.log('[db] Datos paramétricos (seed) cargados correctamente');
+  }
 }
 
 // Ejecuta fn(tx) dentro de una transaccion con el contexto de auditoria del usuario.

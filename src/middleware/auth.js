@@ -3,24 +3,15 @@ const jwt = require('jsonwebtoken');
 function authenticate(req, res, next) {
   try {
     const header = req.headers['authorization'] || '';
-    console.log('🔐 Middleware de autenticación:', { 
-      hasHeader: !!header, 
-      headerLength: header.length,
-      path: req.path 
-    });
-    
     const parts = header.split(' ');
     if (parts.length !== 2 || parts[0] !== 'Bearer') {
-      console.log('❌ Header de autorización inválido');
       return res.status(401).json({ message: 'No autenticado.' });
     }
     const token = parts[1];
     const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
     req.user = payload; // { sub, email, roles, iat, exp }
-    console.log('✅ Usuario autenticado:', { userId: payload.sub, email: payload.email });
     next();
   } catch (err) {
-    console.log('❌ Error de autenticación:', err.message);
     if (err && err.name === 'TokenExpiredError') {
       return res.status(401).json({ message: 'Token expirado.' });
     }
@@ -28,12 +19,30 @@ function authenticate(req, res, next) {
   }
 }
 
+// El codigo de la app se escribio pidiendo roles genericos en ingles
+// ('admin', 'lawyer'), pero el catalogo real de roles (cargado desde el
+// Excel en seed.sql) quedo en español: admin, super_admin, socio, abogado,
+// asociado, junior, paralegal, secretario, contador, cliente, emprendedor.
+// Sin este alias ningun usuario real podia pasar un requireRoles('lawyer'),
+// porque ese rol no existe en el catalogo. Ajusta este mapa si cambian los
+// nombres de roles en la base de datos.
+const ROLE_ALIASES = {
+  admin:  ['admin', 'super_admin'],
+  lawyer: ['abogado', 'socio', 'asociado', 'junior', 'paralegal'],
+};
+
+function expandRole(role) {
+  const key = String(role).toLowerCase();
+  return ROLE_ALIASES[key] || [key];
+}
+
 function requireRoles(...required) {
-  const requiredLower = required.map((r) => String(r).toLowerCase());
+  const requiredLower = required.flatMap(expandRole);
   return function (req, res, next) {
     const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
     const rolesLower = roles.map((r) => String(r).toLowerCase());
-    const ok = requiredLower.some((r) => rolesLower.includes(r));
+    // super_admin siempre pasa cualquier chequeo de rol: es el administrador del sistema.
+    const ok = rolesLower.includes('super_admin') || requiredLower.some((r) => rolesLower.includes(r));
     if (!ok) return res.status(403).json({ message: 'No autorizado.' });
     next();
   };
