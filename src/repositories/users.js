@@ -56,25 +56,29 @@ async function create(data, userId) {
     const { rows } = await tx.query(`
       INSERT INTO users
         (nombre, email, password_hash, active,
-         tipo_documento, numero_documento, telefono_principal, telefono_alterno,
+         tipo_documento, numero_documento, id_cliente, telefono_principal, telefono_alterno,
          direccion_notificacion, ciudad, departamento, pais,
          tarjeta_profesional, numero_tarjeta_prof, fecha_expedicion_tp,
          especialidades, cargo, id_supervisor,
-         tarifa_hora, moneda_tarifa, zona_horaria, idioma_preferido)
+         tarifa_hora, moneda_tarifa, zona_horaria, idioma_preferido,
+         email_verification_token, email_verification_expires)
       VALUES
-        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
       RETURNING *
     `, [
       data.nombre, data.email?.toLowerCase(), data.password_hash, data.active ?? false,
-      data.tipo_documento ?? null, data.numero_documento ?? null,
+      data.tipo_documento ?? null, data.numero_documento ?? null, data.id_cliente ?? null,
       data.telefono_principal ?? null, data.telefono_alterno ?? null,
       data.direccion_notificacion ?? null, data.ciudad ?? null,
       data.departamento ?? null, data.pais ?? null,
-      data.tarjeta_profesional ?? null, data.numero_tarjeta_prof ?? null,
+      // tarjeta_profesional es NOT NULL DEFAULT false; pasar NULL explicito
+      // viola la restriccion en vez de dejar que aplique el default.
+      data.tarjeta_profesional ?? false, data.numero_tarjeta_prof ?? null,
       data.fecha_expedicion_tp ?? null, data.especialidades ?? null,
       data.cargo ?? null, data.id_supervisor ?? null,
       data.tarifa_hora ?? null, data.moneda_tarifa ?? 'COP',
       data.zona_horaria ?? null, data.idioma_preferido ?? null,
+      data.email_verification_token ?? null, data.email_verification_expires ?? null,
     ]);
     return rows[0];
   });

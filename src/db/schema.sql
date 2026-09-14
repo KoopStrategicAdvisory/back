@@ -163,6 +163,10 @@ CREATE TABLE users (
   -- Identificacion legal
   tipo_documento              varchar(10)  CHECK (tipo_documento IN ('CC','CE','PA','NIT')),
   numero_documento            varchar(30),
+  -- Vinculo con la ficha de cliente (clientes.id) cuando este usuario es el
+  -- login de un cliente ya existente en la firma (auto-claim por cedula al
+  -- registrarse). NULL para usuarios que son abogados/staff.
+  id_cliente                  bigint       REFERENCES clientes(id) ON DELETE SET NULL,
   -- Contacto
   telefono_principal          varchar(40),
   telefono_alterno            varchar(40),
@@ -199,6 +203,7 @@ CREATE TABLE users (
   created_at                  timestamptz  NOT NULL DEFAULT now(),
   updated_at                  timestamptz  NOT NULL DEFAULT now(),
   CONSTRAINT uq_users_documento UNIQUE (tipo_documento, numero_documento),
+  CONSTRAINT uq_users_id_cliente UNIQUE (id_cliente),
   CONSTRAINT ck_users_no_auto_supervisor CHECK (id_supervisor IS DISTINCT FROM id)
 );
 
