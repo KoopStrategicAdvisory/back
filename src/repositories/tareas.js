@@ -100,7 +100,9 @@ async function create(data, userId) {
       userId,
       data.id_prioridad ?? null,
       data.id_estado_tarea ?? null,
-      data.origen ?? null,
+      // origen es NOT NULL DEFAULT 'manual'; pasar NULL explicito viola la
+      // restriccion en vez de dejar que aplique el default de la columna.
+      data.origen ?? 'manual',
       data.fecha_limite ?? null,
       data.es_hito_preclusivo ?? false,
       data.observaciones ?? null,

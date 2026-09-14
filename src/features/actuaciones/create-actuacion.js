@@ -8,7 +8,8 @@ const rules = [
   body('id_expediente').isInt({ min: 1 }).withMessage('id_expediente requerido.'),
   body('fecha').notEmpty().withMessage('La fecha de actuación es requerida.'),
   body('titulo').trim().notEmpty().withMessage('El título de la actuación es requerido.'),
-  body('id_tipo_actuacion').optional().isInt({ min: 1 }),
+  // id_tipo_actuacion es NOT NULL en el esquema (actuaciones.id_tipo_actuacion).
+  body('id_tipo_actuacion').isInt({ min: 1 }).withMessage('El tipo de actuación es requerido.'),
 ];
 
 async function handler(req, res, next) {

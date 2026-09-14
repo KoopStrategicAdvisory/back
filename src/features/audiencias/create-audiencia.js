@@ -7,6 +7,8 @@ const { audiencias } = require('../../repositories');
 const rules = [
   body('id_expediente').isInt({ min: 1 }).withMessage('id_expediente requerido.'),
   body('fecha_programada').notEmpty().withMessage('La fecha programada es requerida.'),
+  // tipo_audiencia es NOT NULL en el esquema (audiencias.tipo_audiencia).
+  body('tipo_audiencia').trim().notEmpty().withMessage('El tipo de audiencia es requerido.'),
 ];
 
 async function handler(req, res, next) {

@@ -190,7 +190,10 @@ async function createEtapa(id_expediente, data, userId) {
       data.fecha_fin_real ?? null,
       data.id_usuario_responsable ?? null,
       data.observaciones ?? null,
-      data.origen ?? null,
+      // origen es NOT NULL DEFAULT 'auto' (para etapas generadas desde el iter
+      // procesal); pasar NULL explicito viola la restriccion. Creada a mano
+      // desde este endpoint, por eso el default aqui es 'manual'.
+      data.origen ?? 'manual',
     ]);
     return rows[0];
   });

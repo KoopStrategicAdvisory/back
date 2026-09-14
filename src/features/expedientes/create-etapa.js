@@ -5,8 +5,12 @@ const validate = require('../../middleware/validate');
 const { expedientes } = require('../../repositories');
 
 const rules = [
-  body('id_etapa_procesal').optional().isInt({ min: 1 }),
-  body('id_estado_etapa').optional().isInt({ min: 1 }),
+  // El campo real en el esquema/repositorio es 'id_etapa' (expediente_etapas.id_etapa),
+  // no 'id_etapa_procesal' — esa regla nunca validaba el campo que de verdad se usa.
+  // 'orden' e 'id_estado_etapa' son NOT NULL.
+  body('id_etapa').optional().isInt({ min: 1 }),
+  body('orden').isInt({ min: 1 }).withMessage('El orden de la etapa es requerido.'),
+  body('id_estado_etapa').isInt({ min: 1 }).withMessage('El estado de la etapa es requerido.'),
 ];
 
 async function handler(req, res, next) {
