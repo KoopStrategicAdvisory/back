@@ -4,6 +4,7 @@ const router  = express.Router();
 const slices  = [
   require('./list-documentos'),
   require('./get-documento'),
+  require('./get-download-url'),
   require('./upload-documento'),
   require('./update-documento'),
   require('./delete-documento'),
