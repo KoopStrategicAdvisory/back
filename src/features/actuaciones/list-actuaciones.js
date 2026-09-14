@@ -1,6 +1,7 @@
 'use strict';
 const { authenticate } = require('../../middleware/auth');
-const { actuaciones } = require('../../repositories');
+const { requireOwnExpedienteQuery } = require('../../middleware/clientScope');
+const { actuaciones, expedientes } = require('../../repositories');
 
 async function handler(req, res, next) {
   try {
@@ -15,4 +16,8 @@ async function handler(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { method: 'GET', path: '/', middleware: [authenticate], handler };
+module.exports = {
+  method: 'GET', path: '/',
+  middleware: [authenticate, requireOwnExpedienteQuery(expedientes.findById)],
+  handler,
+};

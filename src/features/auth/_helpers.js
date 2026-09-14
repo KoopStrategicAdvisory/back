@@ -9,7 +9,13 @@ function signAccessToken(user) {
     ? user.roles.map((r) => (typeof r === 'string' ? r : r.nombre))
     : [];
   return jwt.sign(
-    { sub: String(user.id), name: user.nombre, email: user.email, roles, active: user.active !== false },
+    {
+      sub: String(user.id), name: user.nombre, email: user.email, roles, active: user.active !== false,
+      // id_cliente: si esta cuenta esta vinculada a un cliente (auto-claim al
+      // registrarse), el middleware de alcance la usa para que un usuario con
+      // solo el rol 'cliente' unicamente vea su propio expediente.
+      id_cliente: user.id_cliente ?? null,
+    },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
   );

@@ -1,14 +1,18 @@
 'use strict';
 const { authenticate } = require('../../middleware/auth');
-const { documentos } = require('../../repositories');
+const { isClientOnly, requireOwnExpedienteQuery } = require('../../middleware/clientScope');
+const { documentos, expedientes } = require('../../repositories');
 
 async function handler(req, res, next) {
   try {
     const { id_expediente, id_expediente_etapa, visibilidad_cliente, active = 'true', limit = '50', offset = '0' } = req.query;
+    // Un cliente solo ve documentos marcados como visibles para el — nunca
+    // el archivo interno de la firma, aunque sea de su propio expediente.
+    const forceVisibleOnly = isClientOnly(req);
     const rows = await documentos.findAll({
       id_expediente: id_expediente ? Number(id_expediente) : undefined,
       id_expediente_etapa: id_expediente_etapa ? Number(id_expediente_etapa) : undefined,
-      visibilidad_cliente: visibilidad_cliente != null ? visibilidad_cliente === 'true' : undefined,
+      visibilidad_cliente: forceVisibleOnly ? true : (visibilidad_cliente != null ? visibilidad_cliente === 'true' : undefined),
       active: active !== 'false',
       limit: Number(limit), offset: Number(offset),
     });
@@ -16,4 +20,8 @@ async function handler(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { method: 'GET', path: '/', middleware: [authenticate], handler };
+module.exports = {
+  method: 'GET', path: '/',
+  middleware: [authenticate, requireOwnExpedienteQuery(expedientes.findById)],
+  handler,
+};

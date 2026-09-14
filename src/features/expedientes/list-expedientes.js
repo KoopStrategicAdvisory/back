@@ -1,15 +1,19 @@
 'use strict';
 const { authenticate } = require('../../middleware/auth');
+const { scopeExpedientesQuery } = require('../../middleware/clientScope');
 const { expedientes } = require('../../repositories');
 
 async function handler(req, res, next) {
   try {
     const { search, id_usuario, id_cliente, id_estado_proceso, active = 'true', limit = '50', offset = '0' } = req.query;
+    // req.forcedIdCliente lo pone scopeExpedientesQuery cuando el usuario
+    // autenticado es solo-cliente: pisa cualquier id_cliente de la query.
+    const idClienteFilter = req.forcedIdCliente ?? (id_cliente ? Number(id_cliente) : undefined);
     const [data, total] = await Promise.all([
       expedientes.findAll({
         search,
         id_usuario: id_usuario ? Number(id_usuario) : undefined,
-        id_cliente: id_cliente ? Number(id_cliente) : undefined,
+        id_cliente: idClienteFilter,
         id_estado_proceso: id_estado_proceso ? Number(id_estado_proceso) : undefined,
         active: active !== 'false',
         limit: Number(limit),
@@ -18,7 +22,7 @@ async function handler(req, res, next) {
       expedientes.count({
         search,
         id_usuario: id_usuario ? Number(id_usuario) : undefined,
-        id_cliente: id_cliente ? Number(id_cliente) : undefined,
+        id_cliente: idClienteFilter,
         id_estado_proceso: id_estado_proceso ? Number(id_estado_proceso) : undefined,
         active: active !== 'false',
       }),
@@ -27,4 +31,4 @@ async function handler(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { method: 'GET', path: '/', middleware: [authenticate], handler };
+module.exports = { method: 'GET', path: '/', middleware: [authenticate, scopeExpedientesQuery], handler };
