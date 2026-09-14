@@ -57,6 +57,19 @@ async function findByClienteId(idCliente) {
   return rows[0] ?? null;
 }
 
+// Vincula (o corrige) el id_cliente de una fila pendiente ya existente, sin
+// tocar nada mas. Se usa cuando un reintento de registro SI trae una cedula
+// que hace match pero la fila pendiente encontrada por correo todavia no
+// tenia id_cliente asignado (o lo tenia igual, en cuyo caso no cambia nada).
+async function setIdCliente(id, idCliente) {
+  const db = await getDb();
+  const { rows } = await db.query(
+    `UPDATE users SET id_cliente = $1, updated_at = now() WHERE id = $2 AND active = FALSE RETURNING *`,
+    [idCliente, id]
+  );
+  return rows[0] ?? null;
+}
+
 // Reintento de un registro que quedo pendiente (nunca se activo): pasa
 // exactamente esto cuando alguien escribe mal su correo al registrarse,
 // le da "Registrarse", y luego corrige el correo e intenta de nuevo — la
@@ -235,7 +248,7 @@ async function getRoles(idUsuario) {
 }
 
 module.exports = {
-  findAll, findById, findByEmail, findByClienteId, create, update, softDelete,
+  findAll, findById, findByEmail, findByClienteId, setIdCliente, create, update, softDelete,
   resetPendingRegistration,
   updateLastLogin, incrementFailedAttempts, lockUntil, resetFailedAttempts,
   setPasswordReset, updatePassword, setEmailVerified,

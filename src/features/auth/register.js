@@ -59,6 +59,28 @@ async function handler(req, res, next) {
       existingClaim = await users.findByClienteId(clienteMatch.id);
     }
 
+    // Igual de comun: la persona reintenta con el MISMO correo pero el
+    // formulario no reenvia la cedula (o la escribe distinto esta vez), asi
+    // que el match de arriba no la encuentra. Si ya existe una fila sin
+    // activar con ese correo, es el mismo reintento — se retoma esa fila en
+    // vez de chocar contra "el email ya esta registrado". Solo se descarta
+    // si esa fila pendiente ya quedo vinculada a OTRO cliente distinto al
+    // que se acaba de encontrar (para no robarle el pendiente a otra persona).
+    if (!existingClaim) {
+      const byEmail = await users.findByEmail(email);
+      if (byEmail && !byEmail.active) {
+        const idClienteEncontrado = clienteMatch ? clienteMatch.id : null;
+        const sinConflicto = !byEmail.id_cliente || !idClienteEncontrado || Number(byEmail.id_cliente) === Number(idClienteEncontrado);
+        if (sinConflicto) existingClaim = byEmail;
+      }
+    }
+
+    // Si esta vez si se encontro cliente por cedula y la fila pendiente que
+    // se va a reusar todavia no tenia id_cliente, se vincula ahora.
+    if (existingClaim && clienteMatch && !existingClaim.id_cliente) {
+      existingClaim = (await users.setIdCliente(existingClaim.id, clienteMatch.id)) || existingClaim;
+    }
+
     // Ya existe una cuenta activa para este cliente: no se crea otra ni se
     // reenvia nada (evita que alguien con la cedula de un cliente le
     // "resetee" la cuenta a otra persona). La respuesta se queda igual de
@@ -76,16 +98,37 @@ async function handler(req, res, next) {
       return res.status(409).json({ message: 'El email ya está registrado.' });
     }
 
+    // Cliente contra el que se valida el correo de contacto para el link de
+    // verificacion: el de este intento si mando cedula y hubo match, o si no
+    // el que ya tenia vinculado la fila pendiente que se esta reusando (para
+    // poder reenviar el correo aunque esta vez no haya vuelto a escribir la
+    // cedula).
+    let clienteParaEmail = clienteMatch;
+    if (!clienteParaEmail && existingClaim?.id_cliente) {
+      clienteParaEmail = await clientes.findById(existingClaim.id_cliente);
+    }
+
     // Solo se activa por si sola (via link de verificacion) si el cliente
     // encontrado ya tiene un email de contacto en archivo: el link se manda
     // A ESE correo, nunca al que la persona acaba de escribir en el
     // formulario. Asi, conocer la cedula de alguien no basta para entrar a
     // su expediente — hace falta tener acceso a su bandeja real.
-    const claimedWithEmail = !!(clienteMatch && clienteMatch.email);
-    const email_verification_token = claimedWithEmail ? crypto.randomBytes(32).toString('hex') : null;
-    const email_verification_expires = claimedWithEmail
-      ? new Date(Date.now() + VERIFY_TOKEN_HOURS * 60 * 60 * 1000)
-      : null;
+    const claimedWithEmail = !!(clienteParaEmail && clienteParaEmail.email);
+    // Si ya habia un token vigente (no vencido) de un intento anterior, se
+    // REUTILIZA en vez de generar uno nuevo. Antes cada reintento invalidaba
+    // el enlace del correo anterior — si ese correo tardaba en llegar (o el
+    // cliente probaba de nuevo mientras tanto), el enlace que finalmente
+    // abria ya estaba muerto ("Token invalido o expirado") aunque el correo
+    // fuera legitimo y reciente.
+    const tokenVigente = existingClaim?.email_verification_token
+      && existingClaim?.email_verification_expires
+      && new Date(existingClaim.email_verification_expires).getTime() > Date.now();
+    const email_verification_token = !claimedWithEmail
+      ? null
+      : tokenVigente ? existingClaim.email_verification_token : crypto.randomBytes(32).toString('hex');
+    const email_verification_expires = !claimedWithEmail
+      ? null
+      : tokenVigente ? existingClaim.email_verification_expires : new Date(Date.now() + VERIFY_TOKEN_HOURS * 60 * 60 * 1000);
 
     let user;
     if (existingClaim) {
@@ -112,9 +155,12 @@ async function handler(req, res, next) {
     if (claimedWithEmail) {
       const verifyUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email?token=${email_verification_token}`;
       try {
-        await sendVerificationEmail({ to: clienteMatch.email, nombre, verifyUrl, claimed: true });
+        await sendVerificationEmail({ to: clienteParaEmail.email, nombre, verifyUrl, claimed: true });
       } catch (e) {
-        console.error('[AUTH] error enviando email de verificación:', e.message);
+        // No se debe dejar esto en silencio: si Resend falla (dominio no
+        // verificado, limite de envios, etc.) la persona queda con una
+        // cuenta pendiente para siempre y ningun aviso de que algo fallo.
+        console.error('[AUTH] error enviando email de verificación a', clienteParaEmail.email, ':', e.message);
       }
     }
     // Si no hubo match (o el cliente encontrado no tiene email en archivo),
