@@ -51,6 +51,33 @@ async function findByEmail(email) {
   return rows[0] ?? null;
 }
 
+async function findByClienteId(idCliente) {
+  const db = await getDb();
+  const { rows } = await db.query(`SELECT * FROM users WHERE id_cliente = $1`, [idCliente]);
+  return rows[0] ?? null;
+}
+
+// Reintento de un registro que quedo pendiente (nunca se activo): pasa
+// exactamente esto cuando alguien escribe mal su correo al registrarse,
+// le da "Registrarse", y luego corrige el correo e intenta de nuevo — la
+// cedula ya estaba "reclamada" por el primer intento (UNIQUE en
+// users.id_cliente) y el segundo intento fallaba con un error confuso.
+// En vez de bloquear, se reescribe la fila pendiente con los datos nuevos
+// (nombre, correo, password, token de verificacion) para que pueda
+// reintentar las veces que necesite mientras la cuenta siga sin activar.
+async function resetPendingRegistration(id, { nombre, email, password_hash, email_verification_token, email_verification_expires }) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    UPDATE users SET
+      nombre = $1, email = $2, password_hash = $3,
+      email_verification_token = $4, email_verification_expires = $5,
+      updated_at = now()
+    WHERE id = $6 AND active = FALSE
+    RETURNING *
+  `, [nombre, email.toLowerCase(), password_hash, email_verification_token ?? null, email_verification_expires ?? null, id]);
+  return rows[0] ?? null;
+}
+
 async function create(data, userId) {
   return withUser(userId, async (tx) => {
     const { rows } = await tx.query(`
@@ -208,7 +235,8 @@ async function getRoles(idUsuario) {
 }
 
 module.exports = {
-  findAll, findById, findByEmail, create, update, softDelete,
+  findAll, findById, findByEmail, findByClienteId, create, update, softDelete,
+  resetPendingRegistration,
   updateLastLogin, incrementFailedAttempts, lockUntil, resetFailedAttempts,
   setPasswordReset, updatePassword, setEmailVerified,
   addRole, removeRole, getRoles,

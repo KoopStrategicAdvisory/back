@@ -24,12 +24,19 @@ const rules = [
 // de "encontramos tu expediente") solo lo ve el dueno de esa bandeja.
 const GENERIC_MESSAGE = 'Registro recibido. Revisa tu correo para continuar con la activación de tu cuenta.';
 
+async function assignRolCliente(userId) {
+  try {
+    const rolesCliente = await catalogos.roles.findAll({ active: true });
+    const rolCliente = rolesCliente.find((r) => r.nombre === 'cliente');
+    if (rolCliente) await users.addRole(userId, rolCliente.id, null); // addRole ya es idempotente (ON CONFLICT DO NOTHING)
+  } catch (e) {
+    console.error('[AUTH] error asignando rol cliente:', e.message);
+  }
+}
+
 async function handler(req, res, next) {
   try {
     const { nombre, email, password, tipo_documento, numero_documento } = req.body;
-    const existing = await users.findByEmail(email);
-    if (existing) return res.status(409).json({ message: 'El email ya está registrado.' });
-
     const password_hash = await bcrypt.hash(password, ROUNDS);
 
     // Auto-claim: si la cedula coincide con un cliente ya cargado por la
@@ -40,29 +47,67 @@ async function handler(req, res, next) {
       clienteMatch = await clientes.findByDocumento(tipo_documento, String(numero_documento).trim());
     }
 
+    // Si esa cedula ya tiene una cuenta vinculada (users.id_cliente es
+    // UNIQUE), no se puede crear una fila nueva. Esto pasa todo el tiempo
+    // por algo muy normal: alguien escribe mal su correo, le da
+    // "Registrarse", y al corregirlo e intentar de nuevo la cedula ya
+    // estaba "reclamada" por el primer intento — antes esto tiraba un error
+    // confuso. Si esa cuenta anterior sigue sin activarse, se reescribe con
+    // los datos nuevos (nombre/correo/password/token) en vez de bloquear.
+    let existingClaim = null;
+    if (clienteMatch) {
+      existingClaim = await users.findByClienteId(clienteMatch.id);
+    }
+
+    // Ya existe una cuenta activa para este cliente: no se crea otra ni se
+    // reenvia nada (evita que alguien con la cedula de un cliente le
+    // "resetee" la cuenta a otra persona). La respuesta se queda igual de
+    // generica que siempre.
+    if (existingClaim && existingClaim.active) {
+      return res.status(201).json({ message: GENERIC_MESSAGE, pendingActivation: true });
+    }
+
+    // Conflicto de correo: bloquea solo si el correo ya es de OTRA cuenta
+    // distinta a la que se esta reintentando (reenviar el mismo correo, o
+    // corregir a uno nuevo, esta permitido mientras sea un reintento del
+    // mismo registro pendiente).
+    const emailOwner = await users.findByEmail(email);
+    if (emailOwner && emailOwner.id !== existingClaim?.id) {
+      return res.status(409).json({ message: 'El email ya está registrado.' });
+    }
+
     // Solo se activa por si sola (via link de verificacion) si el cliente
     // encontrado ya tiene un email de contacto en archivo: el link se manda
     // A ESE correo, nunca al que la persona acaba de escribir en el
     // formulario. Asi, conocer la cedula de alguien no basta para entrar a
     // su expediente — hace falta tener acceso a su bandeja real.
     const claimedWithEmail = !!(clienteMatch && clienteMatch.email);
-
     const email_verification_token = claimedWithEmail ? crypto.randomBytes(32).toString('hex') : null;
     const email_verification_expires = claimedWithEmail
       ? new Date(Date.now() + VERIFY_TOKEN_HOURS * 60 * 60 * 1000)
       : null;
 
-    const user = await users.create({
-      nombre,
-      email,
-      password_hash,
-      active: false,
-      tipo_documento: tipo_documento || undefined,
-      numero_documento: numero_documento || undefined,
-      id_cliente: clienteMatch ? clienteMatch.id : undefined,
-      email_verification_token,
-      email_verification_expires,
-    }, null);
+    let user;
+    if (existingClaim) {
+      user = await users.resetPendingRegistration(existingClaim.id, {
+        nombre, email, password_hash, email_verification_token, email_verification_expires,
+      });
+      // Carrera muy poco probable: se activo justo entre el findByClienteId
+      // de arriba y este update. Se responde igual, sin reintentar de nuevo.
+      if (!user) return res.status(201).json({ message: GENERIC_MESSAGE, pendingActivation: true });
+    } else {
+      user = await users.create({
+        nombre,
+        email,
+        password_hash,
+        active: false,
+        tipo_documento: tipo_documento || undefined,
+        numero_documento: numero_documento || undefined,
+        id_cliente: clienteMatch ? clienteMatch.id : undefined,
+        email_verification_token,
+        email_verification_expires,
+      }, null);
+    }
 
     if (claimedWithEmail) {
       const verifyUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email?token=${email_verification_token}`;
@@ -79,13 +124,7 @@ async function handler(req, res, next) {
     // Toda cuenta creada por auto-registro es un cliente del portal: se le
     // asigna el rol 'cliente' del catalogo. Sin esto la cuenta quedaba
     // activa pero sin ningun rol, sin acceso real a nada en el front.
-    try {
-      const rolesCliente = await catalogos.roles.findAll({ active: true });
-      const rolCliente = rolesCliente.find((r) => r.nombre === 'cliente');
-      if (rolCliente) await users.addRole(user.id, rolCliente.id, null);
-    } catch (e) {
-      console.error('[AUTH] error asignando rol cliente:', e.message);
-    }
+    await assignRolCliente(user.id);
 
     return res.status(201).json({
       message: GENERIC_MESSAGE,
