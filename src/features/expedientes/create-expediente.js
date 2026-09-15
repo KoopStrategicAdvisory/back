@@ -6,6 +6,11 @@ const { expedientes } = require('../../repositories');
 
 const rules = [
   body('numero_de_expediente').trim().notEmpty().withMessage('El número de expediente es requerido.'),
+  // Radicado del juzgado/despacho correspondiente: a diferencia del numero_de_expediente
+  // (interno de la firma, obligatorio), este es opcional — no siempre se conoce al crear
+  // el expediente, y algunos tramites nunca llegan a tener uno.
+  body('numero_radicado_despacho').optional({ checkFalsy: true }).trim().isLength({ max: 60 })
+    .withMessage('El radicado del despacho no puede superar los 60 caracteres.'),
   body('id_cliente').optional().isInt({ min: 1 }),
   // La columna es NOT NULL en el esquema (expediente.id_tipo_proc_subtipo_proc_tipo_pre);
   // antes se validaba un campo 'id_combo' que el repositorio nunca lee.

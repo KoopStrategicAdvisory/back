@@ -39,7 +39,7 @@ async function findAll({
   if (search) {
     vals.push(`%${search}%`);
     const p = vals.length;
-    conds.push(`(e.numero_de_expediente ILIKE $${p} OR c.nombre ILIKE $${p} OR cp.nombre ILIKE $${p})`);
+    conds.push(`(e.numero_de_expediente ILIKE $${p} OR e.numero_radicado_despacho ILIKE $${p} OR c.nombre ILIKE $${p} OR cp.nombre ILIKE $${p})`);
   }
 
   const { rows } = await db.query(
@@ -59,7 +59,7 @@ async function count({ active = true, id_usuario, id_cliente, id_estado_proceso,
   if (search) {
     vals.push(`%${search}%`);
     const p = vals.length;
-    conds.push(`(e.numero_de_expediente ILIKE $${p} OR c.nombre ILIKE $${p} OR cp.nombre ILIKE $${p})`);
+    conds.push(`(e.numero_de_expediente ILIKE $${p} OR e.numero_radicado_despacho ILIKE $${p} OR c.nombre ILIKE $${p} OR cp.nombre ILIKE $${p})`);
   }
   const { rows } = await db.query(
     `SELECT COUNT(*)::int AS total
@@ -88,14 +88,15 @@ async function create(data, userId) {
   return withUser(userId, async (tx) => {
     const { rows } = await tx.query(`
       INSERT INTO expediente
-        (id_usuario, numero_de_expediente, id_cliente, id_calidad_usuario,
+        (id_usuario, numero_de_expediente, numero_radicado_despacho, id_cliente, id_calidad_usuario,
          id_tipo_proc_subtipo_proc_tipo_pre, id_contraparte,
          juzgado_o_autoridad_que_conoce, id_estado_proceso)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       RETURNING *
     `, [
       userId,
       data.numero_de_expediente,
+      data.numero_radicado_despacho ?? null,
       data.id_cliente ?? null,
       data.id_calidad_usuario ?? null,
       data.id_tipo_proc_subtipo_proc_tipo_pre ?? null,
@@ -110,6 +111,7 @@ async function create(data, userId) {
 async function update(id, data, userId) {
   return withUser(userId, async (tx) => {
     const allowed = [
+      'numero_de_expediente','numero_radicado_despacho',
       'id_cliente','id_calidad_usuario','id_tipo_proc_subtipo_proc_tipo_pre',
       'id_contraparte','juzgado_o_autoridad_que_conoce','id_estado_proceso','active',
     ];
@@ -118,7 +120,7 @@ async function update(id, data, userId) {
     const sets = entries.map(([k], i) => `${k} = $${i + 1}`).join(', ');
     const vals = entries.map(([, v]) => v);
     const { rows } = await tx.query(
-      `UPDATE expediente SET ${sets} WHERE id = $${vals.length + 1} RETURNING *`,
+      `UPDATE expediente SET ${sets}, updated_at = now() WHERE id = $${vals.length + 1} RETURNING *`,
       [...vals, id]
     );
     return rows[0] ?? null;
