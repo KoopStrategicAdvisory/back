@@ -74,10 +74,10 @@ app.get('/api/ping', (req, res) => res.status(200).json({ ok: true, pong: 'api' 
 
 const PORT = process.env.PORT || 4000;
 
-// Inicializar PGlite y luego montar features
+// Inicializar la conexion a Postgres y luego montar features
 getDb()
   .then(() => {
-    console.log('[db] PGlite listo');
+    console.log('[db] Postgres listo');
 
     app.use('/api/auth',           require('./features/auth'));
     app.use('/api/catalogos',      require('./features/catalogos'));
