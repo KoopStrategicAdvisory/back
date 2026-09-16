@@ -16,6 +16,14 @@ const rules = [
   // antes se validaba un campo 'id_combo' que el repositorio nunca lee.
   body('id_tipo_proc_subtipo_proc_tipo_pre').isInt({ min: 1 })
     .withMessage('La materia (tipo de proceso/subtipo/pretensión) es requerida.'),
+  // Contraparte y correo del juzgado/entidad son obligatorios al crear — Felipe pidio
+  // explicitamente que estos dos datos no queden en blanco (a diferencia de direccion
+  // del juzgado, que si es opcional).
+  body('id_contraparte').isInt({ min: 1 }).withMessage('La contraparte (parte demandada) es requerida.'),
+  body('correo_juzgado').trim().notEmpty().withMessage('El correo del juzgado/entidad es requerido.')
+    .isEmail().withMessage('El correo del juzgado/entidad no es válido.'),
+  body('direccion_juzgado').optional({ checkFalsy: true }).trim().isLength({ max: 255 })
+    .withMessage('La dirección del juzgado no puede superar los 255 caracteres.'),
   body('id_estado_proceso').optional().isInt({ min: 1 }),
 ];
 

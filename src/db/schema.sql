@@ -262,6 +262,8 @@ CREATE TABLE expediente (
   id_tipo_proc_subtipo_proc_tipo_pre  bigint       NOT NULL REFERENCES tipo_proc_subtipo_proc_tipo_pre(id) ON DELETE RESTRICT,
   id_contraparte                      bigint       REFERENCES contraparte(id)     ON DELETE RESTRICT,
   juzgado_o_autoridad_que_conoce      varchar(255),
+  correo_juzgado                      varchar(255),
+  direccion_juzgado                   varchar(255),
   id_estado_proceso                   bigint       REFERENCES estado_proceso(id)  ON DELETE RESTRICT,
   active                              boolean      NOT NULL DEFAULT true,
   created_at                          timestamptz  NOT NULL DEFAULT now(),
