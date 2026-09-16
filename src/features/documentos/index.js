@@ -6,6 +6,7 @@ const slices  = [
   require('./get-documento'),
   require('./get-download-url'),
   require('./upload-documento'),
+  require('./upload-documentos-bulk'),
   require('./update-documento'),
   require('./delete-documento'),
 ];
