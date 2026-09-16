@@ -5,7 +5,7 @@ const BASE_SELECT = `
   SELECT
     e.*,
     c.nombre                               AS nombre_cliente,
-    cp.nombre                              AS nombre_contraparte,
+    COALESCE(e.contraparte, cp.nombre)     AS nombre_contraparte,
     ep.nombre                              AS nombre_estado_proceso,
     cu.calidad                             AS calidad_usuario,
     tp.nombre                              AS nombre_tipo_proceso,
@@ -39,7 +39,7 @@ async function findAll({
   if (search) {
     vals.push(`%${search}%`);
     const p = vals.length;
-    conds.push(`(e.numero_de_expediente ILIKE $${p} OR e.numero_radicado_despacho ILIKE $${p} OR c.nombre ILIKE $${p} OR cp.nombre ILIKE $${p})`);
+    conds.push(`(e.numero_de_expediente ILIKE $${p} OR e.numero_radicado_despacho ILIKE $${p} OR c.nombre ILIKE $${p} OR e.contraparte ILIKE $${p} OR cp.nombre ILIKE $${p})`);
   }
 
   const { rows } = await db.query(
@@ -59,7 +59,7 @@ async function count({ active = true, id_usuario, id_cliente, id_estado_proceso,
   if (search) {
     vals.push(`%${search}%`);
     const p = vals.length;
-    conds.push(`(e.numero_de_expediente ILIKE $${p} OR e.numero_radicado_despacho ILIKE $${p} OR c.nombre ILIKE $${p} OR cp.nombre ILIKE $${p})`);
+    conds.push(`(e.numero_de_expediente ILIKE $${p} OR e.numero_radicado_despacho ILIKE $${p} OR c.nombre ILIKE $${p} OR e.contraparte ILIKE $${p} OR cp.nombre ILIKE $${p})`);
   }
   const { rows } = await db.query(
     `SELECT COUNT(*)::int AS total
@@ -89,7 +89,7 @@ async function create(data, userId) {
     const { rows } = await tx.query(`
       INSERT INTO expediente
         (id_usuario, numero_de_expediente, numero_radicado_despacho, id_cliente, id_calidad_usuario,
-         id_tipo_proc_subtipo_proc_tipo_pre, id_contraparte,
+         id_tipo_proc_subtipo_proc_tipo_pre, contraparte,
          juzgado_o_autoridad_que_conoce, correo_juzgado, direccion_juzgado, id_estado_proceso)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *
@@ -100,7 +100,7 @@ async function create(data, userId) {
       data.id_cliente ?? null,
       data.id_calidad_usuario ?? null,
       data.id_tipo_proc_subtipo_proc_tipo_pre ?? null,
-      data.id_contraparte ?? null,
+      data.contraparte ?? null,
       data.juzgado_o_autoridad_que_conoce ?? null,
       data.correo_juzgado ?? null,
       data.direccion_juzgado ?? null,
@@ -115,7 +115,7 @@ async function update(id, data, userId) {
     const allowed = [
       'numero_de_expediente','numero_radicado_despacho',
       'id_cliente','id_calidad_usuario','id_tipo_proc_subtipo_proc_tipo_pre',
-      'id_contraparte','juzgado_o_autoridad_que_conoce','correo_juzgado','direccion_juzgado','id_estado_proceso','active',
+      'contraparte','juzgado_o_autoridad_que_conoce','correo_juzgado','direccion_juzgado','id_estado_proceso','active',
     ];
     const entries = Object.entries(data).filter(([k]) => allowed.includes(k));
     if (!entries.length) return findById(id);

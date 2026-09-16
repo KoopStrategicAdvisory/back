@@ -18,8 +18,10 @@ const rules = [
     .withMessage('La materia (tipo de proceso/subtipo/pretensión) es requerida.'),
   // Contraparte y correo del juzgado/entidad son obligatorios al crear — Felipe pidio
   // explicitamente que estos dos datos no queden en blanco (a diferencia de direccion
-  // del juzgado, que si es opcional).
-  body('id_contraparte').isInt({ min: 1 }).withMessage('La contraparte (parte demandada) es requerida.'),
+  // del juzgado, que si es opcional). La contraparte es texto libre, no un catalogo:
+  // varia caso a caso y no tiene sentido elegirla de una lista fija que solo crece.
+  body('contraparte').trim().notEmpty().withMessage('La contraparte (parte demandada) es requerida.')
+    .isLength({ max: 255 }).withMessage('La contraparte no puede superar los 255 caracteres.'),
   body('correo_juzgado').trim().notEmpty().withMessage('El correo del juzgado/entidad es requerido.')
     .isEmail().withMessage('El correo del juzgado/entidad no es válido.'),
   body('direccion_juzgado').optional({ checkFalsy: true }).trim().isLength({ max: 255 })

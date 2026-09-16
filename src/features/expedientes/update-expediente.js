@@ -11,7 +11,8 @@ const { expedientes } = require('../../repositories');
 // desde el detalle del expediente) — por eso aqui solo se valida el formato de los
 // campos que vengan, sin exigir que esten presentes.
 const rules = [
-  body('id_contraparte').optional().isInt({ min: 1 }),
+  body('contraparte').optional({ checkFalsy: true }).trim().isLength({ max: 255 })
+    .withMessage('La contraparte no puede superar los 255 caracteres.'),
   body('correo_juzgado').optional({ checkFalsy: true }).trim().isEmail()
     .withMessage('El correo del juzgado/entidad no es válido.'),
   body('direccion_juzgado').optional({ checkFalsy: true }).trim().isLength({ max: 255 })

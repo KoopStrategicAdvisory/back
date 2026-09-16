@@ -265,7 +265,13 @@ CREATE TABLE expediente (
   id_cliente                          bigint       REFERENCES clientes(id)        ON DELETE RESTRICT,
   id_calidad_usuario                  bigint       REFERENCES calidad_usuario(id) ON DELETE RESTRICT,
   id_tipo_proc_subtipo_proc_tipo_pre  bigint       NOT NULL REFERENCES tipo_proc_subtipo_proc_tipo_pre(id) ON DELETE RESTRICT,
+  -- id_contraparte (catalogo fijo) quedo obsoleto: la contraparte varia caso a
+  -- caso, asi que ahora se escribe directo en vez de elegirse de una lista que
+  -- solo iba creciendo con nombres que no se repiten. Se deja la columna vieja
+  -- sin usar (nadie la referencia ya) en vez de borrarla, para no perder los
+  -- datos de expedientes creados antes de este cambio.
   id_contraparte                      bigint       REFERENCES contraparte(id)     ON DELETE RESTRICT,
+  contraparte                         varchar(255),
   juzgado_o_autoridad_que_conoce      varchar(255),
   correo_juzgado                      varchar(255),
   direccion_juzgado                   varchar(255),
