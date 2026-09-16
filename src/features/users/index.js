@@ -4,6 +4,8 @@ const router  = express.Router();
 
 const slices = [
   require('./list-users'),
+  require('./list-prospectos'),
+  require('./delete-prospecto'),
   require('./get-user'),
   require('./create-user'),
   require('./update-user'),

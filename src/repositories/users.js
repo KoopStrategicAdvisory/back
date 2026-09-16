@@ -51,6 +51,35 @@ async function findByEmail(email) {
   return rows[0] ?? null;
 }
 
+// Prospectos: gente que se registro pero cuya cedula NUNCA hizo match con
+// ningun cliente de la firma (id_cliente sigue en null) y la cuenta quedo
+// sin activar. No son "basura" — pueden ser gente real que encontro la
+// pagina y quiere una asesoria, solo que todavia no es clienta. El equipo
+// los revisa aqui para decidir si los contacta o los descarta.
+async function findPendientesSinCliente({ limit = 100, offset = 0 } = {}) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    SELECT id, nombre, email, tipo_documento, numero_documento, telefono_principal, created_at
+    FROM users
+    WHERE active = FALSE AND id_cliente IS NULL
+    ORDER BY created_at DESC
+    LIMIT $1 OFFSET $2
+  `, [limit, offset]);
+  return rows;
+}
+
+// Borrado real (no soft-delete): estas filas nunca llegaron a ser una
+// cuenta de verdad, no tienen expedientes ni documentos colgando. Se
+// protege con la misma condicion de arriba para no poder borrar por error
+// una cuenta activa o ya vinculada a un cliente.
+async function hardDeletePendiente(id) {
+  const db = await getDb();
+  const { rows } = await db.query(
+    `DELETE FROM users WHERE id = $1 AND active = FALSE AND id_cliente IS NULL RETURNING id`, [id]
+  );
+  return rows[0] ?? null;
+}
+
 async function findByClienteId(idCliente) {
   const db = await getDb();
   const { rows } = await db.query(`SELECT * FROM users WHERE id_cliente = $1`, [idCliente]);
@@ -78,16 +107,17 @@ async function setIdCliente(id, idCliente) {
 // En vez de bloquear, se reescribe la fila pendiente con los datos nuevos
 // (nombre, correo, password, token de verificacion) para que pueda
 // reintentar las veces que necesite mientras la cuenta siga sin activar.
-async function resetPendingRegistration(id, { nombre, email, password_hash, email_verification_token, email_verification_expires }) {
+async function resetPendingRegistration(id, { nombre, email, password_hash, email_verification_token, email_verification_expires, telefono_principal }) {
   const db = await getDb();
   const { rows } = await db.query(`
     UPDATE users SET
       nombre = $1, email = $2, password_hash = $3,
       email_verification_token = $4, email_verification_expires = $5,
+      telefono_principal = COALESCE($6, telefono_principal),
       updated_at = now()
-    WHERE id = $6 AND active = FALSE
+    WHERE id = $7 AND active = FALSE
     RETURNING *
-  `, [nombre, email.toLowerCase(), password_hash, email_verification_token ?? null, email_verification_expires ?? null, id]);
+  `, [nombre, email.toLowerCase(), password_hash, email_verification_token ?? null, email_verification_expires ?? null, telefono_principal ?? null, id]);
   return rows[0] ?? null;
 }
 
@@ -249,7 +279,7 @@ async function getRoles(idUsuario) {
 
 module.exports = {
   findAll, findById, findByEmail, findByClienteId, setIdCliente, create, update, softDelete,
-  resetPendingRegistration,
+  resetPendingRegistration, findPendientesSinCliente, hardDeletePendiente,
   updateLastLogin, incrementFailedAttempts, lockUntil, resetFailedAttempts,
   setPasswordReset, updatePassword, setEmailVerified,
   addRole, removeRole, getRoles,

@@ -15,6 +15,10 @@ const rules = [
   body('password').isLength({ min: 8 }).withMessage('La contraseña debe tener al menos 8 caracteres.'),
   body('tipo_documento').optional().isIn(['CC', 'CE', 'PA', 'NIT']).withMessage('Tipo de documento inválido.'),
   body('numero_documento').optional().trim(),
+  // Opcional: si quien se registra no resulta ser clienta todavia (no hizo
+  // match), este es el unico dato de contacto directo que le queda al
+  // equipo para poder llamarla si le interesa una asesoria.
+  body('telefono').optional({ checkFalsy: true }).trim().isLength({ max: 40 }),
 ];
 
 // Respuesta SIEMPRE igual sin importar si la cedula coincidio con un cliente
@@ -36,7 +40,7 @@ async function assignRolCliente(userId) {
 
 async function handler(req, res, next) {
   try {
-    const { nombre, email, password, tipo_documento, numero_documento } = req.body;
+    const { nombre, email, password, tipo_documento, numero_documento, telefono } = req.body;
     const password_hash = await bcrypt.hash(password, ROUNDS);
 
     // Auto-claim: si la cedula coincide con un cliente ya cargado por la
@@ -134,6 +138,7 @@ async function handler(req, res, next) {
     if (existingClaim) {
       user = await users.resetPendingRegistration(existingClaim.id, {
         nombre, email, password_hash, email_verification_token, email_verification_expires,
+        telefono_principal: telefono || undefined,
       });
       // Carrera muy poco probable: se activo justo entre el findByClienteId
       // de arriba y este update. Se responde igual, sin reintentar de nuevo.
@@ -146,6 +151,7 @@ async function handler(req, res, next) {
         active: false,
         tipo_documento: tipo_documento || undefined,
         numero_documento: numero_documento || undefined,
+        telefono_principal: telefono || undefined,
         id_cliente: clienteMatch ? clienteMatch.id : undefined,
         email_verification_token,
         email_verification_expires,
