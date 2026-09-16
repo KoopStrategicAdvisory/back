@@ -4,7 +4,13 @@ const { getDb, withUser } = require('../db/client');
 // Factory para catalogo simple: findAll / findById / create / update / softDelete
 function makeCatalog(table) {
   return {
-    async findAll({ active = true, limit = 200, offset = 0 } = {}) {
+    // Estos catalogos alimentan selects/dropdowns (no son listas paginadas
+    // para el usuario) — el limit por defecto debe cubrir cualquier catalogo
+    // real sin que el caller tenga que saberlo. tipo_pretension ya tiene 616
+    // filas y el combo tipo/subtipo/pretension 588 — con 200 se truncaban en
+    // silencio y el frontend mostraba "Pretensión #245" en vez del nombre
+    // real para todo lo que quedaba despues de la fila 200.
+    async findAll({ active = true, limit = 10000, offset = 0 } = {}) {
       const db = await getDb();
       const { rows } = await db.query(
         `SELECT * FROM ${table} WHERE active = $1 ORDER BY id LIMIT $2 OFFSET $3`,
