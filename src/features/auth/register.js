@@ -22,7 +22,7 @@ const rules = [
 // enviar cedulas al azar y usar la respuesta para averiguar quien es cliente
 // de la firma (informacion confidencial). El correo real (con o sin aviso
 // de "encontramos tu expediente") solo lo ve el dueno de esa bandeja.
-const GENERIC_MESSAGE = 'Registro recibido. Revisa tu correo para continuar con la activación de tu cuenta.';
+const GENERIC_MESSAGE = 'Registro recibido. Revisa tu correo para continuar con la activación de tu cuenta (si no lo ves en un par de minutos, revisa también la carpeta de spam o correo no deseado).';
 
 async function assignRolCliente(userId) {
   try {

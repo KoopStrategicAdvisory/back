@@ -13,7 +13,7 @@ async function handler(req, res, next) {
   try {
     const user = await users.findByEmail(req.body.email);
     // Respuesta genérica para no revelar si el email existe
-    if (!user) return res.status(200).json({ message: 'Si el email existe, recibirás un enlace.' });
+    if (!user) return res.status(200).json({ message: 'Si el email existe, recibirás un enlace (revisa también spam/no deseados).' });
 
     const token   = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 60 * 60 * 1000); // 1h
@@ -26,7 +26,7 @@ async function handler(req, res, next) {
       console.error('[AUTH] error enviando email de reset:', e.message);
     }
 
-    return res.status(200).json({ message: 'Si el email existe, recibirás un enlace.' });
+    return res.status(200).json({ message: 'Si el email existe, recibirás un enlace (revisa también spam/no deseados).' });
   } catch (err) { next(err); }
 }
 
