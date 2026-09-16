@@ -4,8 +4,8 @@ const { body } = require('express-validator');
 const { authenticate, requireRoles } = require('../../middleware/auth');
 const validate = require('../../middleware/validate');
 const AppError = require('../../errors/AppError');
-const { documentos } = require('../../repositories');
-const { uploadBuffer } = require('../../services/s3');
+const { documentos, expedientes } = require('../../repositories');
+const { uploadBuffer, documentoPrefix } = require('../../services/s3');
 
 // Antes este endpoint solo creaba la fila en `documentos` esperando que el
 // cliente ya hubiera subido el archivo a algun lado y mandara 'url_storage'
@@ -33,8 +33,10 @@ async function handler(req, res, next) {
     if (!req.file) throw new AppError(400, 'Archivo requerido.');
 
     const idExpediente = Number(req.body.id_expediente);
+    const expediente = await expedientes.findById(idExpediente);
+    if (!expediente) throw new AppError(404, 'Expediente no encontrado.');
     const safeName = sanitizeFileName(req.file.originalname);
-    const key = `documentos/expediente-${idExpediente}/${Date.now()}-${safeName}`;
+    const key = `${documentoPrefix(expediente.numero_de_expediente)}/${Date.now()}-${safeName}`;
 
     await uploadBuffer({
       key,

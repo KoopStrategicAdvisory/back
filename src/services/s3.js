@@ -1,4 +1,4 @@
-﻿const { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+﻿const { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { DeleteObjectsCommand } = require('@aws-sdk/client-s3');
 
@@ -125,6 +125,52 @@ async function deletePrefix({ prefix }) {
   return { prefix: normalized, deleted: total };
 }
 
+// El prefijo de un expediente en S3 se arma con su numero_de_expediente real
+// (ej. "KOOP-2026-3"), no con el id numerico interno de la base de datos —
+// asi la carpeta en S3 dice lo mismo que ve el abogado en la app, en vez de
+// un "expediente-17" que no significa nada fuera del sistema.
+function documentoPrefix(numeroExpediente) {
+  const safe = String(numeroExpediente || '').replace(/[^a-zA-Z0-9._-]+/g, '_');
+  return `documentos/${safe}`;
+}
+
+// Copia todos los objetos bajo fromPrefix a toPrefix (preservando la ruta
+// relativa) y borra los originales. S3 no tiene "mover/renombrar" nativo —
+// es copiar + borrar. Se usa cuando cambia el numero_de_expediente de un
+// expediente que ya tenia documentos subidos, para que la carpeta en S3
+// seguna llamandose como el expediente.
+async function renamePrefix({ fromPrefix, toPrefix }) {
+  ensureConfigured();
+  const fromNorm = String(fromPrefix || '').replace(/^\/+/, '');
+  const toNorm = String(toPrefix || '').replace(/^\/+/, '');
+  if (!fromNorm || !toNorm || fromNorm === toNorm) return { renamed: 0, mapping: [] };
+
+  let continuationToken;
+  const mapping = [];
+  do {
+    const list = await client.send(new ListObjectsV2Command({
+      Bucket: BUCKET, Prefix: fromNorm, ContinuationToken: continuationToken, MaxKeys: 1000,
+    }));
+    for (const obj of list.Contents || []) {
+      const relative = obj.Key.slice(fromNorm.length);
+      const newKey = `${toNorm}${relative}`;
+      await client.send(new CopyObjectCommand({
+        Bucket: BUCKET, Key: newKey, CopySource: `${BUCKET}/${obj.Key}`,
+      }));
+      mapping.push({ from: obj.Key, to: newKey });
+    }
+    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  if (mapping.length) {
+    await client.send(new DeleteObjectsCommand({
+      Bucket: BUCKET,
+      Delete: { Objects: mapping.map((m) => ({ Key: m.from })), Quiet: true },
+    }));
+  }
+  return { renamed: mapping.length, mapping };
+}
+
 async function claimFolder({ prefix, clientId, documentNumber }) {
   ensureConfigured();
   const normalized = String(prefix || '').replace(/^\/+/, '');
@@ -182,6 +228,8 @@ module.exports = {
   getSignedDownloadUrl,
   deleteObject,
   deletePrefix,
+  renamePrefix,
+  documentoPrefix,
   claimFolder,
   buildUserKey,
   buildUserPrefix,

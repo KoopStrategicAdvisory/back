@@ -4,8 +4,8 @@ const { body } = require('express-validator');
 const { authenticate, requireRoles } = require('../../middleware/auth');
 const validate = require('../../middleware/validate');
 const AppError = require('../../errors/AppError');
-const { documentos } = require('../../repositories');
-const { uploadBuffer } = require('../../services/s3');
+const { documentos, expedientes } = require('../../repositories');
+const { uploadBuffer, documentoPrefix } = require('../../services/s3');
 
 // Subida en lote: en expedientes grandes, subir de a un documento a la vez
 // (POST / con un solo 'file') es lento. Aqui se manda un lote de archivos
@@ -31,11 +31,14 @@ async function handler(req, res, next) {
     if (!req.files || !req.files.length) throw new AppError(400, 'Al menos un archivo es requerido.');
 
     const idExpediente = Number(req.body.id_expediente);
+    const expediente = await expedientes.findById(idExpediente);
+    if (!expediente) throw new AppError(404, 'Expediente no encontrado.');
     const idTipoDocumento = Number(req.body.id_tipo_documento);
     const idEtapa = req.body.id_expediente_etapa ? Number(req.body.id_expediente_etapa) : undefined;
     const descripcion = req.body.descripcion || undefined;
     const fechaDocumento = req.body.fecha_documento || undefined;
     const visibilidadCliente = req.body.visibilidad_cliente === 'true' || req.body.visibilidad_cliente === true;
+    const prefix = documentoPrefix(expediente.numero_de_expediente);
 
     const creados = [];
     const errores = [];
@@ -45,7 +48,7 @@ async function handler(req, res, next) {
     for (const file of req.files) {
       try {
         const safeName = sanitizeFileName(file.originalname);
-        const key = `documentos/expediente-${idExpediente}/${Date.now()}-${safeName}`;
+        const key = `${prefix}/${Date.now()}-${safeName}`;
         await uploadBuffer({
           key,
           body: file.buffer,
