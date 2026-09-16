@@ -41,6 +41,12 @@ async function findTableroById(id) {
 
 async function createTablero(data, userId) {
   return withUser(userId, async (tx) => {
+    // tipo_granularidad y tipo_ambito son NOT NULL en el esquema (con CHECK de
+    // valores permitidos) pero nunca se pedian en la validacion ni los mandaba
+    // el front — cualquier intento de crear un tablero tiraba un 500 ("null
+    // value ... violates not-null constraint"). Se les da un default sensato
+    // para el caso comun (tablero de tareas, compartido en la firma) sin dejar
+    // de aceptar un valor explicito si algun dia se necesita otro tipo.
     const { rows } = await tx.query(`
       INSERT INTO tablero_kanban
         (nombre, descripcion, tipo_granularidad, tipo_ambito,
@@ -49,7 +55,7 @@ async function createTablero(data, userId) {
       RETURNING *
     `, [
       data.nombre, data.descripcion ?? null,
-      data.tipo_granularidad ?? null, data.tipo_ambito ?? null,
+      data.tipo_granularidad ?? 'tareas', data.tipo_ambito ?? (data.id_expediente ? 'expediente' : 'firma'),
       data.id_expediente ?? null, userId,
       data.es_publico ?? false,
       data.filtros_default ?? null, data.vista_default ?? null,
@@ -220,14 +226,20 @@ async function findPosicionesByColumna(id_columna, { active = true } = {}) {
 
 async function upsertPosicion(data, userId) {
   return withUser(userId, async (tx) => {
+    // El unico indice que existe de verdad es 'uq_pos_tarea' (parcial: solo
+    // cubre filas con id_tarea) — 'uq_kanban_pos_tarea' nunca existio en el
+    // esquema, asi que todo intento de crear/mover una tarjeta tiraba un
+    // "constraint does not exist". El ON CONFLICT tiene que apuntar al indice
+    // parcial por columnas+predicado, igual que con la plantilla de etapas.
     const { rows } = await tx.query(`
       INSERT INTO tarea_kanban_position
         (id_tablero, id_columna, tipo_entidad, id_tarea, id_expediente_etapa,
          orden_vertical, fecha_movimiento, id_usuario_movio)
       VALUES ($1,$2,$3,$4,$5,$6,now(),$7)
-      ON CONFLICT ON CONSTRAINT uq_kanban_pos_tarea DO UPDATE
+      ON CONFLICT (id_tablero, id_tarea) WHERE id_tarea IS NOT NULL DO UPDATE
         SET id_columna = EXCLUDED.id_columna, orden_vertical = EXCLUDED.orden_vertical,
-            fecha_movimiento = now(), id_usuario_movio = EXCLUDED.id_usuario_movio, updated_at = now()
+            fecha_movimiento = now(), id_usuario_movio = EXCLUDED.id_usuario_movio, updated_at = now(),
+            active = true
       RETURNING *
     `, [
       data.id_tablero, data.id_columna, data.tipo_entidad,
