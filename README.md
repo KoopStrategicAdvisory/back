@@ -183,6 +183,30 @@ El índice de unicidad de `(tipo_documento, numero_documento)` es **parcial** (`
 
 ---
 
+## Flujo 7 — Consultas externas diarias y verificación automática de Rama Judicial
+
+Cada radicado público activo (Rama Judicial, Fiscalía, SIUGJ...) debe revisarse a diario en su portal externo. El checklist solo muestra radicados que realmente existen — un expediente sin radicado público (ej. un trámite notarial) nunca aparece ahí.
+
+```mermaid
+flowchart TD
+    Cron["Cron diario 6:00 a.m.<br/>(o botón manual 'Verificar Rama Judicial ahora')"] --> Buscar{"¿Ya se conoce<br/>el idProceso<br/>de este radicado?"}
+    Buscar -->|no| API1["API pública Rama Judicial:<br/>Consulta por número de radicación<br/>(sin login, sin captcha)"]
+    API1 --> Cache[Guarda el idProceso encontrado]
+    Buscar -->|sí| API2
+    Cache --> API2["API pública Rama Judicial:<br/>última actuación de ese proceso"]
+    API2 --> Compara{"¿La fecha es distinta<br/>a la ya conocida?"}
+    Compara -->|no| Fin[Solo actualiza la marca de tiempo<br/>de la última verificación]
+    Compara -->|sí| Marca["Guarda la actuación nueva<br/>(NO crea el registro de revisión —<br/>eso requiere un abogado real)"]
+    Marca --> Checklist["El checklist del día muestra<br/>'🤖 Detectado automáticamente: ...'<br/>en ese radicado, todavía pendiente"]
+    Checklist --> Humano["El abogado abre 'Marcar revisado':<br/>el formulario ya viene precargado,<br/>solo confirma o ajusta y guarda"]
+```
+
+**Por qué solo Rama Judicial:** se encontró que su portal (`consultaprocesos.ramajudicial.gov.co`) tiene una API JSON pública real detrás del formulario, sin captcha ni login. Fiscalía, SIUGJ y SuperFinanciera sí piden captcha o autenticación, así que sus radicados se siguen revisando a mano como siempre.
+
+**Por qué no se autocompleta la revisión:** `consulta_externa_diaria` (la bitácora) exige un usuario real — es la constancia de que *una persona* revisó el proceso, no solo el sistema. La automatización deja la novedad lista para que el abogado la confirme con un clic, pero no reemplaza esa constancia.
+
+---
+
 ## Otros módulos del backend
 
 Implementados como CRUD (crear/listar/ver/editar/eliminar) sobre su propia tabla, montados en `src/index.js`:
