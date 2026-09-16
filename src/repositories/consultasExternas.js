@@ -36,7 +36,7 @@ async function findByFecha(fecha) {
       e.juzgado_o_autoridad_que_conoce,
       u.nombre           AS nombre_usuario,
       cli.nombre         AS nombre_cliente,
-      cp.nombre          AS nombre_contraparte,
+      COALESCE(e.contraparte, cp.nombre) AS nombre_contraparte,
       cu.calidad         AS calidad_cliente,
       tp.nombre          AS nombre_tipo_proceso,
       sp.nombre          AS nombre_subtipo_proceso
@@ -55,4 +55,17 @@ async function findByFecha(fecha) {
   return rows;
 }
 
-module.exports = { create, findByFecha };
+// Esta bitacora no tiene columna 'active' (no sigue el patron de borrado
+// logico del resto del sistema) — es un registro de auditoria de que se
+// reviso un proceso, no una entidad de negocio con historial que conservar.
+// Si alguien marco un radicado equivocado por error, se borra de verdad.
+async function remove(id, userId) {
+  return withUser(userId, async (tx) => {
+    const { rows } = await tx.query(
+      `DELETE FROM consulta_externa_diaria WHERE id = $1 RETURNING id`, [id]
+    );
+    return rows[0] ?? null;
+  });
+}
+
+module.exports = { create, findByFecha, remove };
