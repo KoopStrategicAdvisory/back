@@ -93,6 +93,7 @@ getDb()
     app.use('/api/financiero',     require('./features/financiero'));
     app.use('/api/kanban',         require('./features/kanban'));
     app.use('/api/colaboracion',   require('./features/colaboracion'));
+    app.use('/api/consultas-externas', require('./features/consultas-externas'));
 
     // Error handler global — DEBE ir después de todas las rutas
     app.use(require('./middleware/error-handler'));
