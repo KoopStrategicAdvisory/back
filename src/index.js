@@ -98,6 +98,21 @@ getDb()
     // Error handler global — DEBE ir después de todas las rutas
     app.use(require('./middleware/error-handler'));
 
+    // Verificacion diaria automatica de radicados de Rama Judicial (su API
+    // publica no pide captcha, a diferencia de Fiscalia/SIUGJ/SuperFinanciera).
+    // Corre todos los dias a las 6:00 am hora de Bogota; tambien se puede
+    // disparar a mano desde POST /api/consultas-externas/verificar-rama-judicial.
+    const cron = require('node-cron');
+    const { verificarTodos } = require('./services/verificarRamaJudicial');
+    cron.schedule('0 6 * * *', async () => {
+      try {
+        const resultado = await verificarTodos();
+        console.log('[RAMA_JUDICIAL] verificacion automatica:', JSON.stringify(resultado));
+      } catch (e) {
+        console.error('[RAMA_JUDICIAL] error en verificacion automatica:', e.message);
+      }
+    }, { timezone: 'America/Bogota' });
+
     app.listen(PORT, () => {
       console.log(`API escuchando en http://localhost:${PORT}`);
     });

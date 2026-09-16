@@ -294,6 +294,14 @@ CREATE TABLE expediente_radicado_publico (
   numero_radicado  varchar(80) NOT NULL,
   active           boolean     NOT NULL DEFAULT true,
   created_at       timestamptz NOT NULL DEFAULT now(),
+  -- Seguimiento automatico contra la API publica de Consulta de Procesos
+  -- Nacional Unificada de la Rama Judicial (sin captcha, sin login) — solo
+  -- aplica cuando organismo = 'Consulta de procesos Rama Judicial'. Se
+  -- cachea el idProceso para no tener que rebuscar por numero cada dia.
+  id_proceso_rama                 bigint,
+  ultima_fecha_actuacion_conocida date,
+  ultima_actuacion_texto          text,
+  ultima_verificacion_automatica  timestamptz,
   CONSTRAINT uq_radicado_publico UNIQUE (id_expediente, organismo, numero_radicado)
 );
 CREATE INDEX ix_radicado_publico_expediente ON expediente_radicado_publico (id_expediente);

@@ -48,6 +48,9 @@ async function findAllActivos({ fecha } = {}) {
       rp.id                AS id_radicado_publico,
       rp.organismo,
       rp.numero_radicado,
+      rp.ultima_fecha_actuacion_conocida,
+      rp.ultima_actuacion_texto,
+      rp.ultima_verificacion_automatica,
       e.id                 AS id_expediente,
       e.numero_de_expediente,
       c.nombre             AS nombre_cliente,
@@ -74,4 +77,34 @@ async function findAllActivos({ fecha } = {}) {
   return rows;
 }
 
-module.exports = { findByExpediente, create, softDelete, findAllActivos };
+// Radicados publicos activos de expedientes activos para un organismo
+// exacto — usado por el verificador automatico, que solo sabe hablar con
+// el portal de Rama Judicial (el unico sin captcha).
+async function findActivosPorOrganismo(organismo) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    SELECT rp.*, e.numero_de_expediente
+    FROM expediente_radicado_publico rp
+    JOIN expediente e ON e.id = rp.id_expediente
+    WHERE rp.active = true AND e.active = true AND rp.organismo = $1
+  `, [organismo]);
+  return rows;
+}
+
+// Guarda lo que el verificador automatico encontro la ultima vez que
+// consulto este radicado — no requiere un usuario (no queda como una fila
+// de consulta_externa_diaria, que si exige quien la reviso; esto es solo
+// el dato en cache para poder comparar la proxima vez).
+async function actualizarSeguimientoRama(id, { id_proceso_rama, ultima_fecha_actuacion_conocida, ultima_actuacion_texto }) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    UPDATE expediente_radicado_publico
+    SET id_proceso_rama = $1, ultima_fecha_actuacion_conocida = $2, ultima_actuacion_texto = $3,
+        ultima_verificacion_automatica = now()
+    WHERE id = $4
+    RETURNING *
+  `, [id_proceso_rama ?? null, ultima_fecha_actuacion_conocida ?? null, ultima_actuacion_texto ?? null, id]);
+  return rows[0] ?? null;
+}
+
+module.exports = { findByExpediente, create, softDelete, findAllActivos, findActivosPorOrganismo, actualizarSeguimientoRama };
