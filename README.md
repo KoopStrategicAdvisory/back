@@ -140,8 +140,9 @@ sequenceDiagram
 
     Note over F,API: Subida (individual o en lote)
     F->>API: POST /documentos (o /documentos/bulk, hasta 20 archivos)
+    API->>API: busca el expediente para obtener su numero_de_expediente real
     loop por cada archivo
-        API->>S3: PutObject en documentos/expediente-{id}/{timestamp}-{nombre}
+        API->>S3: PutObject en documentos/{numero_de_expediente}/{timestamp}-{nombre}
         API->>API: INSERT fila en documentos con esa key
     end
     API-->>F: { creados, errores } — un archivo fallido<br/>no tumba el resto del lote
@@ -151,13 +152,18 @@ sequenceDiagram
     API->>S3: DeleteObject (la key real del documento)
     API->>API: solo si S3 confirma, marca el documento inactivo
 
+    Note over F,API: Editar el numero de un expediente con documentos
+    F->>API: PUT /expedientes/:id (numero_de_expediente distinto)
+    API->>S3: renombra la carpeta completa (copiar + borrar)
+    API->>API: actualiza url_storage de cada documento afectado
+
     Note over F,API: Eliminar el EXPEDIENTE completo
     F->>API: DELETE /expedientes/:id
     API->>API: marca el expediente inactivo (siempre)
-    API->>S3: borra TODO el prefijo documentos/expediente-{id}/<br/>(best-effort — no revierte el borrado del expediente si falla)
+    API->>S3: borra TODO el prefijo documentos/{numero_de_expediente}/<br/>(best-effort — no revierte el borrado del expediente si falla)
 ```
 
-Esto corrigió un problema real: antes "eliminar" solo cambiaba `active` en la base de datos y el archivo se quedaba en S3 para siempre, visible únicamente entrando directo a la consola de AWS. Ahora la app es la única fuente de verdad — lo que se borra ahí, desaparece también del almacenamiento real.
+Esto corrigió dos problemas reales: (1) antes "eliminar" solo cambiaba `active` en la base de datos y el archivo se quedaba en S3 para siempre, visible únicamente entrando directo a la consola de AWS; (2) la carpeta en S3 se llamaba `expediente-<id interno>` (ej. `expediente-17`), que no dice nada fuera del sistema — ahora se llama como el número real del expediente (ej. `KOOP-2026-3`), y si ese número se corrige después, la carpeta se renombra sola.
 
 ---
 
@@ -201,4 +207,4 @@ Estos módulos tienen API completa en el backend; este documento se enfoca en lo
 - **`numero_de_expediente`** siempre tiene el formato `KOOP-AÑO-SECUENCIA`, armado por el frontend a partir de dos campos separados — nunca texto libre.
 - **`contraparte`** en expediente es texto plano, no un catálogo — se escribe cada vez porque varía caso a caso.
 - Los identificadores numéricos de Postgres (`bigint`) llegan como **strings** en JSON; las comparaciones en frontend usan `String(a) === String(b)`, nunca `===` directo.
-- Todas las claves de S3 siguen el patrón `documentos/expediente-<id>/<timestamp>-<nombre-sanitizado>` — es lo que permite purgar por prefijo al borrar un expediente completo.
+- Todas las claves de S3 siguen el patrón `documentos/{numero_de_expediente}/{timestamp}-{nombre-sanitizado}` (ej. `documentos/KOOP-2026-3/...`) — es lo que permite purgar por prefijo al borrar un expediente completo, y renombrar la carpeta si el número de expediente cambia.
