@@ -22,6 +22,17 @@ const rules = [
 async function handler(req, res, next) {
   try {
     const row = await expedientes.create(req.body, req.user.sub);
+    // Todo expediente nuevo arranca con el orden real del tramite (si su
+    // tipo/subtipo/pretension tiene iter procesal cargado) en vez de que el
+    // abogado tenga que armar las etapas una por una a mano. Si el combo no
+    // tiene plantilla (todavia no se cubrio en el catalogo importado), esto
+    // simplemente no crea nada — no es un error, el expediente igual queda
+    // creado y las etapas se pueden agregar manualmente despues.
+    try {
+      await expedientes.generateEtapasFromPlantilla(row.id, req.user.sub);
+    } catch (e) {
+      console.error('[EXPEDIENTES] no se pudieron generar etapas automaticas para', row.id, ':', e.message);
+    }
     res.status(201).json(row);
   } catch (err) { next(err); }
 }

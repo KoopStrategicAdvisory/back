@@ -228,7 +228,64 @@ async function softDeleteEtapa(id, userId) {
   });
 }
 
+// Genera las etapas de un expediente copiando el iter procesal (plantilla)
+// del tipo de proceso/subtipo/pretension que le corresponde — asi los
+// expedientes nuevos arrancan con el orden real del tramite en vez de que
+// cada abogado tenga que ir agregando etapa por etapa a mano y adivinando
+// el orden. Idempotente: si ya existe una etapa de una plantilla dada para
+// este expediente, no la duplica (indice unico parcial
+// uq_exp_etapa_plantilla). Devuelve cuantas etapas (y tareas ligadas a
+// ellas, via tareas_plantilla) se crearon.
+async function generateEtapasFromPlantilla(id_expediente, userId) {
+  return withUser(userId, async (tx) => {
+    const exp = await tx.query(`SELECT id_tipo_proc_subtipo_proc_tipo_pre FROM expediente WHERE id = $1`, [id_expediente]);
+    const combo = exp.rows[0]?.id_tipo_proc_subtipo_proc_tipo_pre;
+    if (!combo) return { etapas: 0, tareas: 0 };
+
+    const { rows: etapasCreadas } = await tx.query(`
+      INSERT INTO expediente_etapas
+        (id_expediente, id_iter_plantilla, id_etapa, orden, id_instancia, id_estado_etapa, observaciones, origen)
+      SELECT
+        $1, p.id, p.id_etapa, p.orden, p.id_instancia,
+        (SELECT id FROM estado_etapa WHERE nombre = 'Pendiente' LIMIT 1),
+        p.observaciones, 'auto'
+      FROM iter_procesal_plantilla p
+      WHERE p.id_tipo_proc_subtipo_proc_tipo_pre = $2
+      ORDER BY p.orden
+      ON CONFLICT (id_expediente, id_iter_plantilla) WHERE id_iter_plantilla IS NOT NULL DO NOTHING
+      RETURNING id, id_iter_plantilla
+    `, [id_expediente, combo]);
+
+    // Tareas plantilla ligadas a las etapas recien creadas (si el iter
+    // procesal trae tareas predefinidas para ese paso — ej. "vence termino
+    // para excepciones"). No se duplican en reintentos: solo se generan
+    // para etapas que se acaban de insertar en esta misma llamada.
+    let tareasCreadas = 0;
+    if (etapasCreadas.length > 0) {
+      const { rows } = await tx.query(`
+        INSERT INTO tareas
+          (id_expediente, id_expediente_etapa, id_tarea_plantilla, titulo, descripcion, id_estado_tarea, id_prioridad, es_hito_preclusivo, origen)
+        SELECT
+          $1, ec.id_expediente_etapa, tp.id, tp.titulo, tp.descripcion,
+          (SELECT id FROM estado_tarea WHERE nombre = 'Pendiente' LIMIT 1),
+          tp.id_prioridad, tp.es_hito_critico, 'auto'
+        FROM (SELECT unnest($2::bigint[]) AS id_iter_plantilla, unnest($3::bigint[]) AS id_expediente_etapa) ec
+        JOIN tareas_plantilla tp ON tp.id_iter_plantilla = ec.id_iter_plantilla AND tp.active = true
+        RETURNING id
+      `, [
+        id_expediente,
+        etapasCreadas.map((e) => e.id_iter_plantilla),
+        etapasCreadas.map((e) => e.id),
+      ]);
+      tareasCreadas = rows.length;
+    }
+
+    return { etapas: etapasCreadas.length, tareas: tareasCreadas };
+  });
+}
+
 module.exports = {
   findAll, count, findById, findByNumero, create, update, softDelete,
   findEtapas, findEtapaById, createEtapa, updateEtapa, softDeleteEtapa,
+  generateEtapasFromPlantilla,
 };
