@@ -2,19 +2,16 @@
 const { authenticate, requireRoles } = require('../../middleware/auth');
 const { radicadosPublicos } = require('../../repositories');
 
-// Lista TODOS los radicados publicos activos (uno por cada organismo en
-// el que exista el proceso, no uno por expediente), marcando cual ya se
-// reviso hoy — es el checklist diario completo.
 async function handler(req, res, next) {
   try {
-    const fecha = req.query.fecha || undefined;
-    const rows = await radicadosPublicos.findAllActivos({ fecha });
+    const idExpediente = Number(req.params.id);
+    const rows = await radicadosPublicos.findByExpediente(idExpediente);
     res.json({ items: rows, total: rows.length });
   } catch (err) { next(err); }
 }
 
 module.exports = {
-  method: 'GET', path: '/radicados',
+  method: 'GET', path: '/:id/radicados-publicos',
   middleware: [authenticate, requireRoles('admin', 'lawyer')],
   handler,
 };

@@ -12,6 +12,9 @@ const slices = [
   require('./create-etapa'),
   require('./update-etapa'),
   require('./delete-etapa'),
+  require('./list-radicados-publicos'),
+  require('./create-radicado-publico'),
+  require('./delete-radicado-publico'),
 ];
 
 for (const { method, path, middleware, handler } of slices)

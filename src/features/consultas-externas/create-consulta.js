@@ -7,6 +7,7 @@ const { consultasExternas } = require('../../repositories');
 const rules = [
   body('numero_radicado').trim().notEmpty().withMessage('El radicado es requerido.'),
   body('id_expediente').optional({ checkFalsy: true }).isInt({ min: 1 }),
+  body('id_radicado_publico').optional({ checkFalsy: true }).isInt({ min: 1 }),
   body('portal_consultado').optional({ checkFalsy: true }).trim().isLength({ max: 150 }),
   body('resultado').optional().isIn(['sin_movimiento', 'actuacion_nueva', 'termino_corriendo']),
   body('observacion').optional({ checkFalsy: true }).trim(),
