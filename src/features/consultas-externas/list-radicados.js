@@ -1,10 +1,11 @@
 'use strict';
 const { authenticate, requireRoles } = require('../../middleware/auth');
 const { radicadosPublicos } = require('../../repositories');
+const { query } = require('express-validator');
+const validate = require('../../middleware/validate');
 
-// Lista TODOS los radicados publicos activos (uno por cada organismo en
-// el que exista el proceso, no uno por expediente), marcando cual ya se
-// reviso hoy — es el checklist diario completo.
+// Lista el seguimiento vigente para la fecha solicitada, una fila por
+// radicado/portal, con su constancia del día si ya fue revisado.
 async function handler(req, res, next) {
   try {
     const fecha = req.query.fecha || undefined;
@@ -15,6 +16,7 @@ async function handler(req, res, next) {
 
 module.exports = {
   method: 'GET', path: '/radicados',
-  middleware: [authenticate, requireRoles('admin', 'lawyer')],
+  middleware: [authenticate, requireRoles('admin', 'lawyer'),
+    query('fecha').optional().isDate({ format: 'YYYY-MM-DD', strictMode: true }), validate],
   handler,
 };

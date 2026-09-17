@@ -11,6 +11,7 @@ async function handler(req, res, next) {
     const idClienteFilter = req.forcedIdCliente ?? (id_cliente ? Number(id_cliente) : undefined);
     const [data, total] = await Promise.all([
       expedientes.findAll({
+        con_radicado: req.query.con_radicado === 'true',
         search,
         id_usuario: id_usuario ? Number(id_usuario) : undefined,
         id_cliente: idClienteFilter,
@@ -20,6 +21,7 @@ async function handler(req, res, next) {
         offset: Number(offset),
       }),
       expedientes.count({
+        con_radicado: req.query.con_radicado === 'true',
         search,
         id_usuario: id_usuario ? Number(id_usuario) : undefined,
         id_cliente: idClienteFilter,

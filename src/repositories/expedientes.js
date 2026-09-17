@@ -27,11 +27,12 @@ const BASE_SELECT = `
 
 async function findAll({
   active = true, id_usuario, id_cliente, id_estado_proceso,
-  search, limit = 20, offset = 0,
+  search, con_radicado = false, limit = 20, offset = 0,
 } = {}) {
   const db  = await getDb();
   const vals = [active];
   const conds = ['e.active = $1'];
+  if (con_radicado) conds.push("NULLIF(BTRIM(e.numero_radicado_despacho), '') IS NOT NULL");
 
   if (id_usuario)       { vals.push(id_usuario);       conds.push(`e.id_usuario = $${vals.length}`); }
   if (id_cliente)       { vals.push(id_cliente);       conds.push(`e.id_cliente = $${vals.length}`); }
@@ -49,10 +50,11 @@ async function findAll({
   return rows;
 }
 
-async function count({ active = true, id_usuario, id_cliente, id_estado_proceso, search } = {}) {
+async function count({ active = true, id_usuario, id_cliente, id_estado_proceso, search, con_radicado = false } = {}) {
   const db  = await getDb();
   const vals = [active];
   const conds = ['e.active = $1'];
+  if (con_radicado) conds.push("NULLIF(BTRIM(e.numero_radicado_despacho), '') IS NOT NULL");
   if (id_usuario)       { vals.push(id_usuario);       conds.push(`e.id_usuario = $${vals.length}`); }
   if (id_cliente)       { vals.push(id_cliente);       conds.push(`e.id_cliente = $${vals.length}`); }
   if (id_estado_proceso){ vals.push(id_estado_proceso); conds.push(`e.id_estado_proceso = $${vals.length}`); }

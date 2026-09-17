@@ -183,9 +183,28 @@ El índice de unicidad de `(tipo_documento, numero_documento)` es **parcial** (`
 
 ---
 
+## Seguimiento diario: lista y alta en cascada
+
+La pantalla de **Consulta diaria de procesos** muestra directamente la lista permanente. Inicia vacía y ofrece **Agregar primer proceso**; no importa todos los expedientes de la firma.
+
+El alta sigue este orden: **cliente → expediente identificado por su radicado externo → página de consulta → modalidad**. Solo aparecen expedientes del cliente con `numero_radicado_despacho`. Se expone ese radicado en el selector, la lista, el formulario de revisión y el PDF; el número interno KOOP no se usa como radicado. El backend obtiene el número desde el expediente y crea el seguimiento en una transacción.
+
+- Rama Judicial ofrece consulta manual o automática (6:00 a.m. de Bogotá, con el servidor funcionando).
+- Fiscalía, SIUGJ, Publicaciones Procesales y SuperFinanciera ofrecen solo manual. El abogado completa el acceso/captcha en la página y registra el resultado.
+- Cada fila permite abrir la página, copiar el radicado y registrar o corregir la revisión de hoy.
+- La constancia PDF del día se habilita cuando todos los procesos tienen resultado. La API verifica también esa condición. Las correcciones se conservan y el PDF incluye la última versión de cada proceso.
+- Retirar detiene el seguimiento desde hoy sin borrar expediente ni constancias. Agregar nuevamente el mismo expediente/portal lo reincorpora sin duplicar filas activas.
+- Se eliminaron de la pantalla las secciones independientes de revisión puntual, directorio de portales y administración de lista.
+
+`src/db/seguimiento-diario.sql` se aplica al iniciar. Crea una lista vacía; si existían altas implícitas de la versión anterior (sin usuario), las retira conservando el historial. Respeta las altas explícitas. La fecha de retiro es exclusiva y las fechas se calculan en Bogotá.
+
+API: `POST /api/consultas-externas/seguimientos` recibe `id_expediente`, `organismo` y `modalidad`. `PUT /api/consultas-externas/radicados/:id/seguimiento` con modalidad `null` retira. `POST /api/consultas-externas` registra un resultado del día usando `id_radicado_publico`; el servidor resuelve radicado y portal. Solo admin/roles de abogado.
+
+La consulta automática muestra la última actuación conocida y su fecha de verificación. El abogado debe seleccionar el resultado; el sistema no asume que un texto almacenado sea una novedad.
+
 ## Flujo 7 — Consultas externas diarias y verificación automática de Rama Judicial
 
-Cada radicado público activo (Rama Judicial, Fiscalía, SIUGJ...) debe revisarse a diario en su portal externo. El checklist solo muestra radicados que realmente existen — un expediente sin radicado público (ej. un trámite notarial) nunca aparece ahí.
+Cada radicado incorporado a la lista permanente debe revisarse a diario en su portal externo. El checklist muestra los seguimientos vigentes para la fecha seleccionada de expedientes y radicados activos.
 
 ```mermaid
 flowchart TD
@@ -197,8 +216,8 @@ flowchart TD
     API2 --> Compara{"¿La fecha es distinta<br/>a la ya conocida?"}
     Compara -->|no| Fin[Solo actualiza la marca de tiempo<br/>de la última verificación]
     Compara -->|sí| Marca["Guarda la actuación nueva<br/>(NO crea el registro de revisión —<br/>eso requiere un abogado real)"]
-    Marca --> Checklist["El checklist del día muestra<br/>'🤖 Detectado automáticamente: ...'<br/>en ese radicado, todavía pendiente"]
-    Checklist --> Humano["El abogado abre 'Marcar revisado':<br/>el formulario ya viene precargado,<br/>solo confirma o ajusta y guarda"]
+    Marca --> Checklist["La fila del proceso permite consultar<br/>la última actuación conocida y su fecha;<br/>la revisión sigue pendiente"]
+    Checklist --> Humano["El abogado abre 'Registrar revisión',<br/>selecciona el resultado y guarda<br/>la constancia del día"]
 ```
 
 **Por qué solo Rama Judicial:** se encontró que su portal (`consultaprocesos.ramajudicial.gov.co`) tiene una API JSON pública real detrás del formulario, sin captcha ni login. Fiscalía, SIUGJ y SuperFinanciera sí piden captcha o autenticación, así que sus radicados se siguen revisando a mano como siempre.

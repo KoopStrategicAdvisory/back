@@ -36,18 +36,17 @@ async function softDelete(id, userId) {
   });
 }
 
-// Todos los radicados publicos activos de expedientes activos — es lo que
-// alimenta el checklist diario: una fila por CADA radicado (no por
-// expediente), asi un mismo caso con radicado en Fiscalia Y Rama Judicial
-// aparece como dos cosas distintas por revisar.
+// Seguimientos vigentes para la fecha solicitada. La configuración es
+// persistente, pero la constancia de revisión se busca por día.
 async function findAllActivos({ fecha } = {}) {
   const db = await getDb();
-  const hoy = fecha || new Date().toISOString().slice(0, 10);
+  const hoy = fecha || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
   const { rows } = await db.query(`
     SELECT
       rp.id                AS id_radicado_publico,
       rp.organismo,
       rp.numero_radicado,
+      seguimiento.modalidad,
       rp.ultima_fecha_actuacion_conocida,
       rp.ultima_actuacion_texto,
       rp.ultima_verificacion_automatica,
@@ -57,14 +56,16 @@ async function findAllActivos({ fecha } = {}) {
       (
         SELECT cd.id FROM consulta_externa_diaria cd
         WHERE cd.id_radicado_publico = rp.id AND cd.fecha_consulta = $1
-        ORDER BY cd.created_at DESC LIMIT 1
+        ORDER BY cd.created_at DESC, cd.id DESC LIMIT 1
       )                    AS ultima_consulta_hoy_id,
       (
         SELECT cd.resultado FROM consulta_externa_diaria cd
         WHERE cd.id_radicado_publico = rp.id AND cd.fecha_consulta = $1
-        ORDER BY cd.created_at DESC LIMIT 1
+        ORDER BY cd.created_at DESC, cd.id DESC LIMIT 1
       )                    AS ultimo_resultado_hoy
     FROM expediente_radicado_publico rp
+    JOIN seguimiento_diario seguimiento ON seguimiento.id_radicado_publico = rp.id
+      AND seguimiento.desde <= $1::date AND (seguimiento.hasta IS NULL OR seguimiento.hasta > $1::date)
     JOIN expediente e ON e.id = rp.id_expediente
     LEFT JOIN clientes c ON c.id = e.id_cliente
     WHERE rp.active = true AND e.active = true
@@ -87,6 +88,11 @@ async function findActivosPorOrganismo(organismo) {
     FROM expediente_radicado_publico rp
     JOIN expediente e ON e.id = rp.id_expediente
     WHERE rp.active = true AND e.active = true AND rp.organismo = $1
+      AND NULLIF(BTRIM(e.numero_radicado_despacho), '') IS NOT NULL
+      AND BTRIM(rp.numero_radicado) = BTRIM(e.numero_radicado_despacho)
+      AND EXISTS (SELECT 1 FROM seguimiento_diario s WHERE s.id_radicado_publico = rp.id
+        AND s.hasta IS NULL AND s.modalidad = 'automatica'
+        AND s.desde <= (now() AT TIME ZONE 'America/Bogota')::date)
   `, [organismo]);
   return rows;
 }

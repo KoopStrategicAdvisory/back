@@ -2,6 +2,8 @@
 const express = require('express');
 const router  = express.Router();
 const slices  = [
+  require('./agregar-seguimiento'),
+  require('./configurar-seguimiento'),
   require('./list-radicados'),
   require('./download-pdf'),
   require('./list-consultas'),

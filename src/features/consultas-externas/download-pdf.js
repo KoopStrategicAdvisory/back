@@ -3,6 +3,8 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const { authenticate, requireRoles } = require('../../middleware/auth');
 const { consultasExternas } = require('../../repositories');
+const { query } = require('express-validator');
+const validate = require('../../middleware/validate');
 
 const LOGO_PATH = path.join(__dirname, '../../assets/koop-logo.png');
 
@@ -68,8 +70,8 @@ function field(doc, label, value, x, width) {
 // sentido por si solo, no solo un radicado suelto.
 async function handler(req, res, next) {
   try {
-    const fecha = req.query.fecha || new Date().toISOString().slice(0, 10);
-    const rows = await consultasExternas.findByFecha(fecha);
+    const fecha = req.query.fecha || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+    const rows = await consultasExternas.reporteCompleto(fecha);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="bitacora-diaria-${fecha}.pdf"`);
@@ -94,9 +96,7 @@ async function handler(req, res, next) {
         doc.moveDown(0.7);
       }
 
-      const titulo = r.numero_de_expediente
-        ? `${i + 1}. Expediente ${r.numero_de_expediente} — Radicado ${r.numero_radicado}`
-        : `${i + 1}. Radicado ${r.numero_radicado}`;
+      const titulo = `${i + 1}. Radicado ${r.numero_radicado}`;
       doc.font('Helvetica-Bold').fontSize(10.5).fillColor(NAVY).text(titulo, 50);
       doc.moveDown(0.35);
 
@@ -139,6 +139,6 @@ async function handler(req, res, next) {
 
 module.exports = {
   method: 'GET', path: '/pdf',
-  middleware: [authenticate, requireRoles('admin', 'lawyer')],
+  middleware: [authenticate, requireRoles('admin', 'lawyer'), query('fecha').optional().isDate({ format: 'YYYY-MM-DD', strictMode: true }), validate],
   handler,
 };

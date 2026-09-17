@@ -20,7 +20,8 @@
         ],
         "testPathIgnorePatterns": [
             "/node_modules/",
-            "/__tests__/functional/"
+            "/__tests__/functional/",
+            "/__tests__/integration/"
         ],
         "clearMocks": true,
         "resetMocks": true,
