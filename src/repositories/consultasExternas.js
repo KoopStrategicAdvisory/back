@@ -55,10 +55,23 @@ async function findByFecha(fecha) {
   return rows;
 }
 
+// fecha_consulta::text evita cualquier ambiguedad de zona horaria al
+// convertir un DATE de Postgres a JS Date (el driver lo arma en la
+// medianoche de la zona horaria del proceso, no en UTC) — aqui se necesita
+// el texto exacto 'YYYY-MM-DD' tal cual quedo guardado, sin reinterpretar.
+async function findById(id) {
+  const db = await getDb();
+  const { rows } = await db.query(
+    `SELECT *, fecha_consulta::text AS fecha_consulta_text FROM consulta_externa_diaria WHERE id = $1`, [id]
+  );
+  return rows[0] ?? null;
+}
+
 // Esta bitacora no tiene columna 'active' (no sigue el patron de borrado
 // logico del resto del sistema) — es un registro de auditoria de que se
 // reviso un proceso, no una entidad de negocio con historial que conservar.
-// Si alguien marco un radicado equivocado por error, se borra de verdad.
+// Si alguien marco un radicado equivocado por error EL MISMO DIA, se borra
+// de verdad — los dias anteriores quedan fijos (ver delete-consulta.js).
 async function remove(id, userId) {
   return withUser(userId, async (tx) => {
     const { rows } = await tx.query(
@@ -68,4 +81,4 @@ async function remove(id, userId) {
   });
 }
 
-module.exports = { create, findByFecha, remove };
+module.exports = { create, findByFecha, findById, remove };
