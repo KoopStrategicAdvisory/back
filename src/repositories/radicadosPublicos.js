@@ -1,0 +1,122 @@
+'use strict';
+const { getDb, withUser } = require('../db/client');
+
+// Radicados publicos de un expediente: puede tener varios, uno por cada
+// organismo externo donde exista el mismo caso (Rama Judicial, Fiscalia,
+// Publicaciones Procesales, SIUGJ, SuperFinanciera...).
+async function findByExpediente(idExpediente, { active = true } = {}) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    SELECT * FROM expediente_radicado_publico
+    WHERE id_expediente = $1 AND active = $2
+    ORDER BY organismo
+  `, [idExpediente, active]);
+  return rows;
+}
+
+async function create(idExpediente, data, userId) {
+  return withUser(userId, async (tx) => {
+    const { rows } = await tx.query(`
+      INSERT INTO expediente_radicado_publico (id_expediente, organismo, numero_radicado)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (id_expediente, organismo, numero_radicado)
+        DO UPDATE SET active = true
+      RETURNING *
+    `, [idExpediente, data.organismo, data.numero_radicado]);
+    return rows[0];
+  });
+}
+
+async function softDelete(id, userId) {
+  return withUser(userId, async (tx) => {
+    const { rows } = await tx.query(
+      `UPDATE expediente_radicado_publico SET active = FALSE WHERE id = $1 RETURNING id`, [id]
+    );
+    return rows[0] ?? null;
+  });
+}
+
+// Seguimientos vigentes para la fecha solicitada. La configuración es
+// persistente, pero la constancia de revisión se busca por día.
+async function findAllActivos({ fecha } = {}) {
+  const db = await getDb();
+  const hoy = fecha || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+  const { rows } = await db.query(`
+    SELECT
+      rp.id                AS id_radicado_publico,
+      rp.organismo,
+      rp.numero_radicado,
+      seguimiento.modalidad,
+      rp.ultima_fecha_actuacion_conocida,
+      rp.ultima_actuacion_texto,
+      rp.ultima_verificacion_automatica,
+      e.id                 AS id_expediente,
+      e.numero_de_expediente,
+      c.nombre             AS nombre_cliente,
+      (
+        SELECT cd.id FROM consulta_externa_diaria cd
+        WHERE cd.id_radicado_publico = rp.id AND cd.fecha_consulta = $1
+        ORDER BY cd.created_at DESC, cd.id DESC LIMIT 1
+      )                    AS ultima_consulta_hoy_id,
+      (
+        SELECT cd.resultado FROM consulta_externa_diaria cd
+        WHERE cd.id_radicado_publico = rp.id AND cd.fecha_consulta = $1
+        ORDER BY cd.created_at DESC, cd.id DESC LIMIT 1
+      )                    AS ultimo_resultado_hoy
+    FROM expediente_radicado_publico rp
+    JOIN seguimiento_diario seguimiento ON seguimiento.id_radicado_publico = rp.id
+      AND seguimiento.desde <= $1::date AND (seguimiento.hasta IS NULL OR seguimiento.hasta > $1::date)
+    JOIN expediente e ON e.id = rp.id_expediente
+    LEFT JOIN clientes c ON c.id = e.id_cliente
+    WHERE rp.active = true AND e.active = true
+    ORDER BY (
+      SELECT cd.id FROM consulta_externa_diaria cd
+      WHERE cd.id_radicado_publico = rp.id AND cd.fecha_consulta = $1
+      LIMIT 1
+    ) NULLS FIRST, e.numero_de_expediente, rp.organismo
+  `, [hoy]);
+  return rows;
+}
+
+// Radicados publicos activos de expedientes activos para un organismo
+// exacto — usado por el verificador automatico, que solo sabe hablar con
+// el portal de Rama Judicial (el unico sin captcha).
+async function findActivosPorOrganismo(organismo) {
+  const db = await getDb();
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+  const { rows } = await db.query(`
+    SELECT rp.*, e.numero_de_expediente,
+      (
+        SELECT cd.id FROM consulta_externa_diaria cd
+        WHERE cd.id_radicado_publico = rp.id AND cd.fecha_consulta = $2
+        ORDER BY cd.created_at DESC, cd.id DESC LIMIT 1
+      ) AS ultima_consulta_hoy_id
+    FROM expediente_radicado_publico rp
+    JOIN expediente e ON e.id = rp.id_expediente
+    WHERE rp.active = true AND e.active = true AND rp.organismo = $1
+      AND NULLIF(BTRIM(e.numero_radicado_despacho), '') IS NOT NULL
+      AND BTRIM(rp.numero_radicado) = BTRIM(e.numero_radicado_despacho)
+      AND EXISTS (SELECT 1 FROM seguimiento_diario s WHERE s.id_radicado_publico = rp.id
+        AND s.hasta IS NULL AND s.modalidad = 'automatica'
+        AND s.desde <= (now() AT TIME ZONE 'America/Bogota')::date)
+  `, [organismo, hoy]);
+  return rows;
+}
+
+// Guarda lo que el verificador automatico encontro la ultima vez que
+// consulto este radicado — no requiere un usuario (no queda como una fila
+// de consulta_externa_diaria, que si exige quien la reviso; esto es solo
+// el dato en cache para poder comparar la proxima vez).
+async function actualizarSeguimientoRama(id, { id_proceso_rama, ultima_fecha_actuacion_conocida, ultima_actuacion_texto }) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    UPDATE expediente_radicado_publico
+    SET id_proceso_rama = $1, ultima_fecha_actuacion_conocida = $2, ultima_actuacion_texto = $3,
+        ultima_verificacion_automatica = now()
+    WHERE id = $4
+    RETURNING *
+  `, [id_proceso_rama ?? null, ultima_fecha_actuacion_conocida ?? null, ultima_actuacion_texto ?? null, id]);
+  return rows[0] ?? null;
+}
+
+module.exports = { findByExpediente, create, softDelete, findAllActivos, findActivosPorOrganismo, actualizarSeguimientoRama };
