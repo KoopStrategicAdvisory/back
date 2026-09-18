@@ -3,6 +3,7 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const { authenticate, requireRoles } = require('../../middleware/auth');
 const { consultasExternas } = require('../../repositories');
+const { uploadBuffer, constanciaKey } = require('../../services/s3');
 const { query } = require('express-validator');
 const validate = require('../../middleware/validate');
 
@@ -73,11 +74,9 @@ async function handler(req, res, next) {
     const fecha = req.query.fecha || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
     const rows = await consultasExternas.reporteCompleto(fecha);
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="bitacora-diaria-${fecha}.pdf"`);
-
     const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
-    doc.pipe(res);
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
 
     drawHeader(doc, fecha, rows.length);
 
@@ -133,7 +132,25 @@ async function handler(req, res, next) {
       drawFooter(doc, i, range.count);
     }
 
-    doc.end();
+    const pdfBuffer = await new Promise((resolve, reject) => {
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      doc.end();
+    });
+
+    // Guarda la constancia en su propia carpeta en S3 (una por fecha, se
+    // sobreescribe si se vuelve a generar el mismo día) — así queda un
+    // archivo permanente además de lo que se descargue en el momento. Si
+    // S3 falla no se bloquea la descarga: el abogado igual necesita su PDF.
+    try {
+      await uploadBuffer({ key: constanciaKey(fecha), body: pdfBuffer, contentType: 'application/pdf' });
+    } catch (e) {
+      console.error('[CONSTANCIAS] no se pudo archivar en S3 la bitácora de', fecha, ':', e.message);
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="bitacora-diaria-${fecha}.pdf"`);
+    res.send(pdfBuffer);
   } catch (err) { next(err); }
 }
 

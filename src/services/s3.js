@@ -134,6 +134,15 @@ function documentoPrefix(numeroExpediente) {
   return `documentos/${safe}`;
 }
 
+// Carpeta propia (fuera de documentos/, que es por expediente) para las
+// constancias en PDF de la bitacora diaria de consultas externas — una por
+// fecha, sobreescrita si se vuelve a generar ese mismo dia.
+const CONSTANCIAS_PREFIX = 'constancias-consultas-externas';
+function constanciaKey(fecha) {
+  const safe = String(fecha || '').replace(/[^0-9-]+/g, '');
+  return `${CONSTANCIAS_PREFIX}/${safe}.pdf`;
+}
+
 // Copia todos los objetos bajo fromPrefix a toPrefix (preservando la ruta
 // relativa) y borra los originales. S3 no tiene "mover/renombrar" nativo —
 // es copiar + borrar. Se usa cuando cambia el numero_de_expediente de un
@@ -233,6 +242,8 @@ module.exports = {
   claimFolder,
   buildUserKey,
   buildUserPrefix,
+  CONSTANCIAS_PREFIX,
+  constanciaKey,
 };
 
 
