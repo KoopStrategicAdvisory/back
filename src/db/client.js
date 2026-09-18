@@ -45,6 +45,7 @@ async function _bootstrap(pool) {
 
   if (rows[0].ready) {
     await pool.query(fs.readFileSync(path.join(__dirname, 'seguimiento-diario.sql'), 'utf8'));
+    await pool.query(fs.readFileSync(path.join(__dirname, 'sistema-usuario.sql'), 'utf8'));
     return;
   }
 
@@ -59,6 +60,7 @@ async function _bootstrap(pool) {
     console.log('[db] Datos paramétricos (seed) cargados correctamente');
   }
   await pool.query(fs.readFileSync(path.join(__dirname, 'seguimiento-diario.sql'), 'utf8'));
+  await pool.query(fs.readFileSync(path.join(__dirname, 'sistema-usuario.sql'), 'utf8'));
 }
 
 // Ejecuta fn(tx) dentro de una transaccion con el contexto de auditoria del usuario.

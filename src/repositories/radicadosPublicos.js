@@ -83,8 +83,14 @@ async function findAllActivos({ fecha } = {}) {
 // el portal de Rama Judicial (el unico sin captcha).
 async function findActivosPorOrganismo(organismo) {
   const db = await getDb();
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
   const { rows } = await db.query(`
-    SELECT rp.*, e.numero_de_expediente
+    SELECT rp.*, e.numero_de_expediente,
+      (
+        SELECT cd.id FROM consulta_externa_diaria cd
+        WHERE cd.id_radicado_publico = rp.id AND cd.fecha_consulta = $2
+        ORDER BY cd.created_at DESC, cd.id DESC LIMIT 1
+      ) AS ultima_consulta_hoy_id
     FROM expediente_radicado_publico rp
     JOIN expediente e ON e.id = rp.id_expediente
     WHERE rp.active = true AND e.active = true AND rp.organismo = $1
@@ -93,7 +99,7 @@ async function findActivosPorOrganismo(organismo) {
       AND EXISTS (SELECT 1 FROM seguimiento_diario s WHERE s.id_radicado_publico = rp.id
         AND s.hasta IS NULL AND s.modalidad = 'automatica'
         AND s.desde <= (now() AT TIME ZONE 'America/Bogota')::date)
-  `, [organismo]);
+  `, [organismo, hoy]);
   return rows;
 }
 

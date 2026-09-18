@@ -214,15 +214,15 @@ flowchart TD
     Buscar -->|sí| API2
     Cache --> API2["API pública Rama Judicial:<br/>última actuación de ese proceso"]
     API2 --> Compara{"¿La fecha es distinta<br/>a la ya conocida?"}
-    Compara -->|no| Fin[Solo actualiza la marca de tiempo<br/>de la última verificación]
-    Compara -->|sí| Marca["Guarda la actuación nueva<br/>(NO crea el registro de revisión —<br/>eso requiere un abogado real)"]
-    Marca --> Checklist["La fila del proceso permite consultar<br/>la última actuación conocida y su fecha;<br/>la revisión sigue pendiente"]
-    Checklist --> Humano["El abogado abre 'Registrar revisión',<br/>selecciona el resultado y guarda<br/>la constancia del día"]
+    Compara -->|no/sí| Genera{"¿Hoy ya tiene registro<br/>Y no hubo novedad?"}
+    Genera -->|sí, nada que hacer| Fin[Solo actualiza el cache<br/>de última actuación conocida]
+    Genera -->|no: es la primera vez hoy,<br/>o apareció una actuación distinta| Registro["Genera el registro del día:<br/>fecha de actuación, actuación y anotación,<br/>a nombre de la cuenta de servicio<br/>'Sistema Koop (verificación automática)'"]
+    Registro --> Humano["El abogado puede abrir 'Corregir registro'<br/>si algo no coincide con la realidad"]
 ```
 
 **Por qué solo Rama Judicial:** se encontró que su portal (`consultaprocesos.ramajudicial.gov.co`) tiene una API JSON pública real detrás del formulario, sin captcha ni login. Fiscalía, SIUGJ y SuperFinanciera sí piden captcha o autenticación, así que sus radicados se siguen revisando a mano como siempre.
 
-**Por qué no se autocompleta la revisión:** `consulta_externa_diaria` (la bitácora) exige un usuario real — es la constancia de que *una persona* revisó el proceso, no solo el sistema. La automatización deja la novedad lista para que el abogado la confirme con un clic, pero no reemplaza esa constancia.
+**Quién queda como autor del registro automático:** `consulta_externa_diaria.id_usuario` exige un usuario real (no admite NULL), así que `src/db/sistema-usuario.sql` crea una cuenta de servicio (`sistema.rama-judicial@koop.internal`, `active=false`, sin contraseña utilizable — no se puede iniciar sesión con ella) que queda como autora de estos registros. Así la bitácora deja claro cuáles revisiones las generó el sistema y cuáles un abogado real; el abogado puede corregir cualquiera con "Corregir registro" si hace falta.
 
 ---
 
