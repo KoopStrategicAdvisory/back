@@ -1,2 +1,5 @@
 /node_modules
 .env
+
+# Los reportes HTML de las pruebas se regeneran en cada corrida
+reports/

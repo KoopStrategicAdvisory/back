@@ -1,0 +1,29 @@
+name: Pruebas del backend
+
+# Corre solas en cada push y en cada pull request. No necesitan base de datos
+# ni credenciales: usan PGlite (Postgres en memoria) y simulan S3 y el correo.
+on:
+  push:
+    branches: [produccion, master]
+  pull_request:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Unitarias (rápidas, con mocks) + funcionales e integración (PGlite real).
+      - run: npm run test:all
+      - name: Guardar el reporte de pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reportes-de-pruebas
+          path: reports/
+          if-no-files-found: ignore
