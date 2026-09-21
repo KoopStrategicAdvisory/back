@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "koop-back",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["src/index.js"],
+      "port": 4000
+    },
+    {
+      "name": "koop-front",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "../front"],
+      "port": 5173
+    },
+    {
+      "name": "koop-v2-front",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["-C", "../v2/front", "--filter", "koop", "dev"],
+      "port": 5173
+    }
+  ]
+}

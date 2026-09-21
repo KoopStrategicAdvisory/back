@@ -1,0 +1,292 @@
+'use strict';
+const { getDb, withUser } = require('../db/client');
+
+// Cuentas de servicio (p. ej. la que firma los registros automáticos de Rama
+// Judicial, sistema.rama-judicial@koop.internal): no son personas, así que no
+// deben aparecer en las listas de usuarios ni de prospectos, ni poderse
+// descartar o editar desde ahí.
+const NO_ES_CUENTA_DE_SERVICIO = "u.email NOT LIKE '%@koop.internal'";
+
+async function findAll({ active = true, limit = 50, offset = 0 } = {}) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    SELECT u.*, COALESCE(
+      json_agg(json_build_object('id', r.id, 'nombre', r.nombre)) FILTER (WHERE r.id IS NOT NULL),
+      '[]'
+    ) AS roles
+    FROM users u
+    LEFT JOIN user_rol ur ON ur.id_usuario = u.id
+    LEFT JOIN roles r     ON r.id = ur.id_rol
+    WHERE u.active = $1 AND ${NO_ES_CUENTA_DE_SERVICIO}
+    GROUP BY u.id
+    ORDER BY u.nombre
+    LIMIT $2 OFFSET $3
+  `, [active, limit, offset]);
+  return rows;
+}
+
+async function findById(id) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    SELECT u.*, COALESCE(
+      json_agg(json_build_object('id', r.id, 'nombre', r.nombre)) FILTER (WHERE r.id IS NOT NULL),
+      '[]'
+    ) AS roles
+    FROM users u
+    LEFT JOIN user_rol ur ON ur.id_usuario = u.id
+    LEFT JOIN roles r     ON r.id = ur.id_rol
+    WHERE u.id = $1
+    GROUP BY u.id
+  `, [id]);
+  return rows[0] ?? null;
+}
+
+async function findByEmail(email) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    SELECT u.*, COALESCE(
+      json_agg(json_build_object('id', r.id, 'nombre', r.nombre)) FILTER (WHERE r.id IS NOT NULL),
+      '[]'
+    ) AS roles
+    FROM users u
+    LEFT JOIN user_rol ur ON ur.id_usuario = u.id
+    LEFT JOIN roles r     ON r.id = ur.id_rol
+    WHERE u.email = $1
+    GROUP BY u.id
+  `, [email.toLowerCase().trim()]);
+  return rows[0] ?? null;
+}
+
+// Prospectos: gente que se registro pero cuya cedula NUNCA hizo match con
+// ningun cliente de la firma (id_cliente sigue en null) y la cuenta quedo
+// sin activar. No son "basura" — pueden ser gente real que encontro la
+// pagina y quiere una asesoria, solo que todavia no es clienta. El equipo
+// los revisa aqui para decidir si los contacta o los descarta.
+async function findPendientesSinCliente({ limit = 100, offset = 0 } = {}) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    SELECT u.id, u.nombre, u.email, u.tipo_documento, u.numero_documento, u.telefono_principal, u.created_at
+    FROM users u
+    WHERE u.active = FALSE AND u.id_cliente IS NULL AND ${NO_ES_CUENTA_DE_SERVICIO}
+    ORDER BY created_at DESC
+    LIMIT $1 OFFSET $2
+  `, [limit, offset]);
+  return rows;
+}
+
+// Borrado real (no soft-delete): estas filas nunca llegaron a ser una
+// cuenta de verdad, no tienen expedientes ni documentos colgando. Se
+// protege con la misma condicion de arriba para no poder borrar por error
+// una cuenta activa o ya vinculada a un cliente.
+async function hardDeletePendiente(id) {
+  const db = await getDb();
+  const { rows } = await db.query(
+    `DELETE FROM users u WHERE u.id = $1 AND u.active = FALSE AND u.id_cliente IS NULL AND ${NO_ES_CUENTA_DE_SERVICIO} RETURNING u.id`, [id]
+  );
+  return rows[0] ?? null;
+}
+
+async function findByClienteId(idCliente) {
+  const db = await getDb();
+  const { rows } = await db.query(`SELECT * FROM users WHERE id_cliente = $1`, [idCliente]);
+  return rows[0] ?? null;
+}
+
+// Vincula (o corrige) el id_cliente de una fila pendiente ya existente, sin
+// tocar nada mas. Se usa cuando un reintento de registro SI trae una cedula
+// que hace match pero la fila pendiente encontrada por correo todavia no
+// tenia id_cliente asignado (o lo tenia igual, en cuyo caso no cambia nada).
+async function setIdCliente(id, idCliente) {
+  const db = await getDb();
+  const { rows } = await db.query(
+    `UPDATE users SET id_cliente = $1, updated_at = now() WHERE id = $2 AND active = FALSE RETURNING *`,
+    [idCliente, id]
+  );
+  return rows[0] ?? null;
+}
+
+// Reintento de un registro que quedo pendiente (nunca se activo): pasa
+// exactamente esto cuando alguien escribe mal su correo al registrarse,
+// le da "Registrarse", y luego corrige el correo e intenta de nuevo — la
+// cedula ya estaba "reclamada" por el primer intento (UNIQUE en
+// users.id_cliente) y el segundo intento fallaba con un error confuso.
+// En vez de bloquear, se reescribe la fila pendiente con los datos nuevos
+// (nombre, correo, password, token de verificacion) para que pueda
+// reintentar las veces que necesite mientras la cuenta siga sin activar.
+async function resetPendingRegistration(id, { nombre, email, password_hash, email_verification_token, email_verification_expires, telefono_principal }) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    UPDATE users SET
+      nombre = $1, email = $2, password_hash = $3,
+      email_verification_token = $4, email_verification_expires = $5,
+      telefono_principal = COALESCE($6, telefono_principal),
+      updated_at = now()
+    WHERE id = $7 AND active = FALSE
+    RETURNING *
+  `, [nombre, email.toLowerCase(), password_hash, email_verification_token ?? null, email_verification_expires ?? null, telefono_principal ?? null, id]);
+  return rows[0] ?? null;
+}
+
+async function create(data, userId) {
+  return withUser(userId, async (tx) => {
+    const { rows } = await tx.query(`
+      INSERT INTO users
+        (nombre, email, password_hash, active,
+         tipo_documento, numero_documento, id_cliente, telefono_principal, telefono_alterno,
+         direccion_notificacion, ciudad, departamento, pais,
+         tarjeta_profesional, numero_tarjeta_prof, fecha_expedicion_tp,
+         especialidades, cargo, id_supervisor,
+         tarifa_hora, moneda_tarifa, zona_horaria, idioma_preferido,
+         email_verification_token, email_verification_expires)
+      VALUES
+        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+      RETURNING *
+    `, [
+      data.nombre, data.email?.toLowerCase(), data.password_hash, data.active ?? false,
+      data.tipo_documento ?? null, data.numero_documento ?? null, data.id_cliente ?? null,
+      data.telefono_principal ?? null, data.telefono_alterno ?? null,
+      data.direccion_notificacion ?? null, data.ciudad ?? null,
+      data.departamento ?? null, data.pais ?? null,
+      // tarjeta_profesional es NOT NULL DEFAULT false; pasar NULL explicito
+      // viola la restriccion en vez de dejar que aplique el default.
+      data.tarjeta_profesional ?? false, data.numero_tarjeta_prof ?? null,
+      data.fecha_expedicion_tp ?? null, data.especialidades ?? null,
+      data.cargo ?? null, data.id_supervisor ?? null,
+      data.tarifa_hora ?? null, data.moneda_tarifa ?? 'COP',
+      data.zona_horaria ?? null, data.idioma_preferido ?? null,
+      data.email_verification_token ?? null, data.email_verification_expires ?? null,
+    ]);
+    return rows[0];
+  });
+}
+
+async function update(id, data, userId) {
+  return withUser(userId, async (tx) => {
+    const allowed = [
+      'nombre','tipo_documento','numero_documento','telefono_principal','telefono_alterno',
+      'direccion_notificacion','ciudad','departamento','pais','tarjeta_profesional',
+      'numero_tarjeta_prof','fecha_expedicion_tp','especialidades','cargo','id_supervisor',
+      'fecha_ingreso','fecha_retiro','tarifa_hora','moneda_tarifa','firma_digital_url',
+      'foto_url','zona_horaria','idioma_preferido','active','must_change_password',
+    ];
+    const entries = Object.entries(data).filter(([k]) => allowed.includes(k));
+    if (!entries.length) return findById(id);
+    const sets = entries.map(([k], i) => `${k} = $${i + 1}`).join(', ');
+    const vals = entries.map(([, v]) => v);
+    const { rows } = await tx.query(
+      `UPDATE users SET ${sets}, updated_at = now() WHERE id = $${vals.length + 1} RETURNING *`,
+      [...vals, id]
+    );
+    return rows[0] ?? null;
+  });
+}
+
+async function softDelete(id, userId) {
+  return withUser(userId, async (tx) => {
+    const { rows } = await tx.query(
+      `UPDATE users SET active = FALSE, updated_at = now() WHERE id = $1 RETURNING id`, [id]
+    );
+    return rows[0] ?? null;
+  });
+}
+
+async function updateLastLogin(id) {
+  const db = await getDb();
+  await db.query(
+    `UPDATE users SET last_login = now(), failed_login_attempts = 0 WHERE id = $1`, [id]
+  );
+}
+
+async function incrementFailedAttempts(id) {
+  const db = await getDb();
+  const { rows } = await db.query(
+    `UPDATE users SET failed_login_attempts = failed_login_attempts + 1
+     WHERE id = $1 RETURNING failed_login_attempts`, [id]
+  );
+  return rows[0]?.failed_login_attempts ?? 0;
+}
+
+async function lockUntil(id, until) {
+  const db = await getDb();
+  await db.query(
+    `UPDATE users SET locked_until = $1 WHERE id = $2`, [until, id]
+  );
+}
+
+async function resetFailedAttempts(id) {
+  const db = await getDb();
+  await db.query(
+    `UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1`, [id]
+  );
+}
+
+async function setPasswordReset(id, token, expires) {
+  const db = await getDb();
+  await db.query(
+    `UPDATE users SET password_reset_token = $1, password_reset_expires = $2 WHERE id = $3`,
+    [token, expires, id]
+  );
+}
+
+async function updatePassword(id, passwordHash, userId) {
+  return withUser(userId, async (tx) => {
+    const { rows } = await tx.query(`
+      UPDATE users SET
+        password_hash = $1, password_reset_token = NULL, password_reset_expires = NULL,
+        must_change_password = FALSE, updated_at = now()
+      WHERE id = $2 RETURNING id
+    `, [passwordHash, id]);
+    return rows[0] ?? null;
+  });
+}
+
+async function setEmailVerified(id) {
+  const db = await getDb();
+  await db.query(
+    `UPDATE users SET
+       email_verification_token = NULL, email_verification_expires = NULL, active = TRUE
+     WHERE id = $1`,
+    [id]
+  );
+}
+
+// user_rol
+async function addRole(idUsuario, idRol, userId) {
+  return withUser(userId, async (tx) => {
+    const { rows } = await tx.query(
+      `INSERT INTO user_rol (id_usuario, id_rol) VALUES ($1, $2)
+       ON CONFLICT (id_usuario, id_rol) DO NOTHING RETURNING *`,
+      [idUsuario, idRol]
+    );
+    return rows[0] ?? null;
+  });
+}
+
+async function removeRole(idUsuario, idRol, userId) {
+  return withUser(userId, async (tx) => {
+    const { rows } = await tx.query(
+      `DELETE FROM user_rol WHERE id_usuario = $1 AND id_rol = $2 RETURNING *`,
+      [idUsuario, idRol]
+    );
+    return rows[0] ?? null;
+  });
+}
+
+async function getRoles(idUsuario) {
+  const db = await getDb();
+  const { rows } = await db.query(`
+    SELECT r.* FROM roles r
+    JOIN user_rol ur ON ur.id_rol = r.id
+    WHERE ur.id_usuario = $1 AND r.active = TRUE
+    ORDER BY r.nombre
+  `, [idUsuario]);
+  return rows;
+}
+
+module.exports = {
+  findAll, findById, findByEmail, findByClienteId, setIdCliente, create, update, softDelete,
+  resetPendingRegistration, findPendientesSinCliente, hardDeletePendiente,
+  updateLastLogin, incrementFailedAttempts, lockUntil, resetFailedAttempts,
+  setPasswordReset, updatePassword, setEmailVerified,
+  addRole, removeRole, getRoles,
+};

@@ -1,0 +1,2330 @@
+openapi: 3.0.3
+info:
+  title: Koop Legal Management API
+  version: 2.0.0
+  description: |
+    API para gestión integral de despacho de abogados.
+
+    Cubre expedientes procesales, tareas, actuaciones, notificaciones,
+    audiencias, documentos, finanzas (honorarios, pagos, gastos), Kanban
+    y colaboración (comentarios, etiquetas, adjuntos, dependencias).
+
+    ### Autenticación
+    Todos los endpoints (excepto `/auth/register`, `/auth/login`,
+    `/auth/forgot-password`, `/auth/reset-password` y `/auth/verify-email`)
+    requieren un token JWT en la cabecera:
+
+    ```
+    Authorization: Bearer <accessToken>
+    ```
+
+    El `accessToken` se obtiene en `POST /auth/login`.
+    Usa `POST /auth/refresh` para renovarlo sin re-autenticarse.
+
+servers:
+  - url: http://localhost:4000/api
+    description: Desarrollo local
+  - url: /api
+    description: Producción (relativo)
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Auth
+    description: Registro, login, logout y gestión de sesión
+  - name: Catálogos
+    description: Datos de referencia (roles, tipos de proceso, etapas procesales, etc.)
+  - name: Clientes
+    description: Clientes del despacho
+  - name: Users
+    description: Usuarios internos del sistema
+  - name: Expedientes
+    description: Expedientes procesales y sus etapas
+  - name: Iter Procesal
+    description: Plantillas de itinerario procesal
+  - name: Tareas
+    description: Tareas del despacho y sus checklists
+  - name: Actuaciones
+    description: Actuaciones procesales registradas
+  - name: Notificaciones
+    description: Notificaciones judiciales
+  - name: Audiencias
+    description: Audiencias programadas
+  - name: Documentos
+    description: Metadatos de documentos del expediente
+  - name: Financiero
+    description: Honorarios, pagos y gastos del proceso
+  - name: Kanban
+    description: Tableros, columnas y posiciones Kanban
+  - name: Colaboración
+    description: Etiquetas, comentarios, adjuntos y dependencias
+
+# ──────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ──────────────────────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    ItemIdPath:
+      name: itemId
+      in: path
+      required: true
+      schema: { type: integer }
+    LimitQuery:
+      name: limit
+      in: query
+      schema: { type: integer, default: 50 }
+    OffsetQuery:
+      name: offset
+      in: query
+      schema: { type: integer, default: 0 }
+    ActiveQuery:
+      name: active
+      in: query
+      schema: { type: boolean, default: true }
+
+  schemas:
+    # ── Genéricos ─────────────────────────────────────────────────────────────
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+      required: [message]
+
+    ValidationError:
+      type: object
+      properties:
+        message: { type: string, example: Datos inválidos. }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+    MessageResponse:
+      type: object
+      properties:
+        message: { type: string }
+
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    UserPublic:
+      type: object
+      properties:
+        id:      { type: integer, example: 1 }
+        nombre:  { type: string,  example: Ana García }
+        email:   { type: string,  format: email }
+        active:  { type: boolean }
+        roles:
+          type: array
+          items:
+            type: object
+            properties:
+              id:     { type: integer }
+              nombre: { type: string }
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        user:        { $ref: '#/components/schemas/UserPublic' }
+
+    # ── Catálogos simples ─────────────────────────────────────────────────────
+    CatalogItem:
+      type: object
+      properties:
+        id:     { type: integer }
+        nombre: { type: string }
+        active: { type: boolean }
+
+    Role:
+      type: object
+      properties:
+        id:          { type: integer }
+        nombre:      { type: string }
+        descripcion: { type: string }
+        active:      { type: boolean }
+
+    TipoNotificacion:
+      type: object
+      properties:
+        id:               { type: integer }
+        nombre:           { type: string }
+        fundamento_legal: { type: string }
+        dias_surtimiento: { type: integer }
+        descripcion:      { type: string }
+        active:           { type: boolean }
+
+    Prioridad:
+      type: object
+      properties:
+        id:     { type: integer }
+        nombre: { type: string }
+        nivel:  { type: integer }
+        active: { type: boolean }
+
+    TipoProcCombo:
+      type: object
+      properties:
+        id:                 { type: integer }
+        id_tipo_proceso:    { type: integer }
+        id_subtipo_proceso: { type: integer }
+        id_tipo_pretension: { type: integer }
+        active:             { type: boolean }
+
+    EtapaProcesal:
+      type: object
+      properties:
+        id:               { type: integer }
+        id_tipo_proceso:  { type: integer }
+        nombre_etapa:     { type: string }
+        descripcion:      { type: string }
+        fundamento_legal: { type: string }
+        active:           { type: boolean }
+
+    # ── Clientes ──────────────────────────────────────────────────────────────
+    Cliente:
+      type: object
+      properties:
+        id:               { type: integer }
+        nombre:           { type: string,  example: Juan Pérez }
+        tipo_persona:     { type: string,  enum: [NATURAL, JURIDICA] }
+        tipo_documento:   { type: string,  enum: [CC, CE, PA, NIT, TI, PE] }
+        numero_documento: { type: string }
+        email:            { type: string,  format: email }
+        telefono:         { type: string }
+        active:           { type: boolean }
+
+    # ── Users ─────────────────────────────────────────────────────────────────
+    User:
+      type: object
+      properties:
+        id:              { type: integer }
+        nombre:          { type: string }
+        email:           { type: string, format: email }
+        active:          { type: boolean }
+        cargo:           { type: string }
+        especialidades:  { type: string }
+        tarifa_hora:     { type: number }
+        moneda_tarifa:   { type: string }
+        last_login:      { type: string, format: date-time }
+        created_at:      { type: string, format: date-time }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/CatalogItem' }
+
+    # ── Expedientes ───────────────────────────────────────────────────────────
+    Expediente:
+      type: object
+      properties:
+        id:                                    { type: integer }
+        numero_de_expediente:                  { type: string, example: EXP-2024-001 }
+        id_usuario:                            { type: integer }
+        id_cliente:                            { type: integer }
+        id_calidad_usuario:                    { type: integer }
+        id_tipo_proc_subtipo_proc_tipo_pre:    { type: integer }
+        id_contraparte:                        { type: integer }
+        juzgado_o_autoridad_que_conoce:        { type: string }
+        id_estado_proceso:                     { type: integer }
+        active:                                { type: boolean }
+
+    ExpedienteEtapa:
+      type: object
+      properties:
+        id:                     { type: integer }
+        id_expediente:          { type: integer }
+        id_iter_plantilla:      { type: integer }
+        id_etapa:               { type: integer }
+        orden:                  { type: integer }
+        id_instancia:           { type: integer }
+        id_estado_etapa:        { type: integer }
+        fecha_inicio:           { type: string, format: date }
+        fecha_vencimiento:      { type: string, format: date }
+        fecha_fin_real:         { type: string, format: date }
+        id_usuario_responsable: { type: integer }
+        observaciones:          { type: string }
+        active:                 { type: boolean }
+
+    # ── Iter Procesal ─────────────────────────────────────────────────────────
+    IterProcesalPlantilla:
+      type: object
+      properties:
+        id:                                    { type: integer }
+        id_tipo_proc_subtipo_proc_tipo_pre:    { type: integer }
+        id_etapa:                              { type: integer }
+        orden:                                 { type: integer }
+        id_instancia:                          { type: integer }
+        plazo_dias:                            { type: integer }
+        dias_habiles:                          { type: boolean }
+        dispara_notificacion:                  { type: boolean }
+        es_obligatoria:                        { type: boolean }
+        observaciones:                         { type: string }
+        active:                                { type: boolean }
+
+    TareaPlantilla:
+      type: object
+      properties:
+        id:                 { type: integer }
+        id_iter_plantilla:  { type: integer }
+        titulo:             { type: string }
+        descripcion:        { type: string }
+        dias_desde_etapa:   { type: integer }
+        dias_habiles:       { type: boolean }
+        id_prioridad:       { type: integer }
+        id_rol_responsable: { type: integer }
+        es_hito_critico:    { type: boolean }
+        active:             { type: boolean }
+
+    # ── Tareas ────────────────────────────────────────────────────────────────
+    Tarea:
+      type: object
+      properties:
+        id:                   { type: integer }
+        id_expediente:        { type: integer }
+        id_expediente_etapa:  { type: integer }
+        id_tarea_plantilla:   { type: integer }
+        titulo:               { type: string }
+        descripcion:          { type: string }
+        id_usuario_asignado:  { type: integer }
+        id_usuario_creador:   { type: integer }
+        id_prioridad:         { type: integer }
+        id_estado_tarea:      { type: integer }
+        fecha_limite:         { type: string, format: date }
+        fecha_completado:     { type: string, format: date-time }
+        es_hito_preclusivo:   { type: boolean }
+        observaciones:        { type: string }
+        created_at:           { type: string, format: date-time }
+        active:               { type: boolean }
+
+    ChecklistItem:
+      type: object
+      properties:
+        id:           { type: integer }
+        id_tarea:     { type: integer }
+        descripcion:  { type: string }
+        completado:   { type: boolean }
+        created_at:   { type: string, format: date-time }
+        active:       { type: boolean }
+
+    # ── Actuaciones ───────────────────────────────────────────────────────────
+    Actuacion:
+      type: object
+      properties:
+        id:                   { type: integer }
+        id_expediente:        { type: integer }
+        id_expediente_etapa:  { type: integer }
+        fecha:                { type: string, format: date }
+        id_tipo_actuacion:    { type: integer }
+        titulo:               { type: string }
+        descripcion:          { type: string }
+        autoridad_emite:      { type: string }
+        id_usuario_registra:  { type: integer }
+        es_hito:              { type: boolean }
+        url_rama_judicial:    { type: string }
+        created_at:           { type: string, format: date-time }
+        active:               { type: boolean }
+
+    # ── Notificaciones ────────────────────────────────────────────────────────
+    Notificacion:
+      type: object
+      properties:
+        id:                     { type: integer }
+        id_expediente:          { type: integer }
+        id_expediente_etapa:    { type: integer }
+        id_actuacion:           { type: integer }
+        id_tipo_notificacion:   { type: integer }
+        id_medio_notificacion:  { type: integer }
+        parte_notificada:       { type: string }
+        destinatario:           { type: string }
+        direccion_o_correo:     { type: string }
+        fecha_realizacion:      { type: string, format: date }
+        fecha_surtimiento:      { type: string, format: date }
+        dias_plazo:             { type: integer }
+        fecha_vencimiento:      { type: string, format: date }
+        objeto_notificacion:    { type: string }
+        estado:                 { type: string }
+        observaciones:          { type: string }
+        active:                 { type: boolean }
+
+    # ── Audiencias ────────────────────────────────────────────────────────────
+    Audiencia:
+      type: object
+      properties:
+        id:                     { type: integer }
+        id_expediente:          { type: integer }
+        id_expediente_etapa:    { type: integer }
+        tipo_audiencia:         { type: string }
+        fecha_programada:       { type: string, format: date-time }
+        modalidad:              { type: string, enum: [presencial, virtual, mixta] }
+        enlace_virtual:         { type: string }
+        juzgado_o_autoridad:    { type: string }
+        direccion_fisica:       { type: string }
+        asistentes:             { type: string }
+        id_usuario_responsable: { type: integer }
+        estado:                 { type: string }
+        resultado:              { type: string }
+        observaciones:          { type: string }
+        active:                 { type: boolean }
+
+    # ── Documentos ────────────────────────────────────────────────────────────
+    Documento:
+      type: object
+      properties:
+        id:                   { type: integer }
+        id_expediente:        { type: integer }
+        id_tipo_documento:    { type: integer }
+        nombre_archivo:       { type: string }
+        titulo:               { type: string }
+        descripcion:          { type: string }
+        url_storage:          { type: string }
+        mime_type:            { type: string }
+        tamano_bytes:         { type: integer }
+        fecha_documento:      { type: string, format: date }
+        fecha_carga:          { type: string, format: date-time }
+        id_usuario_carga:     { type: integer }
+        id_expediente_etapa:  { type: integer }
+        version:              { type: integer, default: 1 }
+        visibilidad_cliente:  { type: boolean }
+        active:               { type: boolean }
+
+    # ── Financiero ────────────────────────────────────────────────────────────
+    Honorario:
+      type: object
+      properties:
+        id:                      { type: integer }
+        id_expediente:           { type: integer }
+        id_usuario:              { type: integer }
+        modalidad:               { type: string }
+        monto_total_pactado:     { type: number }
+        moneda:                  { type: string, example: COP }
+        porcentaje_cuota_litis:  { type: number }
+        fecha_pacto:             { type: string, format: date }
+        forma_pago:              { type: string }
+        numero_cuotas:           { type: integer }
+        valor_cuota:             { type: number }
+        estado:                  { type: string }
+        active:                  { type: boolean }
+
+    Pago:
+      type: object
+      properties:
+        id:               { type: integer }
+        id_expediente:    { type: integer }
+        id_honorario:     { type: integer }
+        fecha_pago:       { type: string, format: date }
+        monto:            { type: number }
+        moneda:           { type: string, example: COP }
+        metodo_pago:      { type: string }
+        numero_referencia: { type: string }
+        estado:           { type: string }
+        active:           { type: boolean }
+
+    GastoProceso:
+      type: object
+      properties:
+        id:              { type: integer }
+        id_expediente:   { type: integer }
+        fecha_gasto:     { type: string, format: date }
+        categoria_gasto: { type: string }
+        descripcion:     { type: string }
+        monto:           { type: number }
+        moneda:          { type: string, example: COP }
+        proveedor:       { type: string }
+        reembolsable:    { type: boolean }
+        reembolsado:     { type: boolean }
+        active:          { type: boolean }
+
+    ResumenFinanciero:
+      type: object
+      properties:
+        honorarios_pactados: { type: number }
+        total_pagado:        { type: number }
+        saldo_pendiente:     { type: number }
+        total_gastos:        { type: number }
+
+    # ── Kanban ────────────────────────────────────────────────────────────────
+    Tablero:
+      type: object
+      properties:
+        id:                      { type: integer }
+        nombre:                  { type: string }
+        descripcion:             { type: string }
+        tipo_granularidad:       { type: string }
+        tipo_ambito:             { type: string }
+        id_expediente:           { type: integer }
+        id_usuario_propietario:  { type: integer }
+        es_publico:              { type: boolean }
+        active:                  { type: boolean }
+
+    ColumnaKanban:
+      type: object
+      properties:
+        id:          { type: integer }
+        id_tablero:  { type: integer }
+        nombre:      { type: string }
+        orden:       { type: integer }
+        color:       { type: string }
+        wip_limit:   { type: integer }
+        es_inicial:  { type: boolean }
+        es_final:    { type: boolean }
+        active:      { type: boolean }
+
+    KanbanPosicion:
+      type: object
+      properties:
+        id:                   { type: integer }
+        id_tablero:           { type: integer }
+        id_columna:           { type: integer }
+        tipo_entidad:         { type: string, enum: [TAREA, ETAPA] }
+        id_tarea:             { type: integer }
+        id_expediente_etapa:  { type: integer }
+        orden_vertical:       { type: integer }
+        active:               { type: boolean }
+
+    # ── Colaboración ──────────────────────────────────────────────────────────
+    Etiqueta:
+      type: object
+      properties:
+        id:          { type: integer }
+        nombre:      { type: string }
+        color:       { type: string }
+        icono:       { type: string }
+        descripcion: { type: string }
+        active:      { type: boolean }
+
+    Comentario:
+      type: object
+      properties:
+        id:                   { type: integer }
+        tipo_entidad:         { type: string }
+        id_tarea:             { type: integer }
+        id_expediente_etapa:  { type: integer }
+        id_usuario_autor:     { type: integer }
+        id_parent:            { type: integer }
+        contenido:            { type: string }
+        editado:              { type: boolean }
+        created_at:           { type: string, format: date-time }
+        active:               { type: boolean }
+
+    Adjunto:
+      type: object
+      properties:
+        id:                   { type: integer }
+        tipo_entidad:         { type: string }
+        id_tarea:             { type: integer }
+        id_expediente_etapa:  { type: integer }
+        id_comentario:        { type: integer }
+        nombre_archivo:       { type: string }
+        url_archivo:          { type: string }
+        mime_type:            { type: string }
+        tamano_bytes:         { type: integer }
+        active:               { type: boolean }
+
+    Dependencia:
+      type: object
+      properties:
+        id:               { type: integer }
+        tipo_dependencia: { type: string }
+        es_bloqueante:    { type: boolean }
+        active:           { type: boolean }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PATHS
+# ──────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ── AUTH ────────────────────────────────────────────────────────────────────
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Registrar nuevo usuario
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre, email, password]
+              properties:
+                nombre:   { type: string }
+                email:    { type: string, format: email }
+                password: { type: string, minLength: 8 }
+      responses:
+        '201':
+          description: Usuario creado, pendiente de activación
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pendingActivation: { type: boolean }
+                  user: { $ref: '#/components/schemas/UserPublic' }
+        '400': { description: Datos inválidos,    content: { application/json: { schema: { $ref: '#/components/schemas/ValidationError' } } } }
+        '409': { description: Email ya registrado, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Login exitoso — devuelve accessToken y establece cookie refreshToken
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { description: Datos inválidos }
+        '401': { description: Credenciales incorrectas }
+        '403': { description: Cuenta inactiva }
+        '423': { description: Cuenta bloqueada temporalmente }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Cerrar sesión (limpia la cookie refreshToken)
+      responses:
+        '200': { description: Sesión cerrada }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Obtener perfil del usuario autenticado
+      responses:
+        '200':
+          description: Datos del usuario actual
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPublic' }
+        '401': { description: No autenticado }
+        '404': { description: Usuario no encontrado }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Renovar accessToken usando la cookie refreshToken
+      security: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+        '401': { description: Cookie refreshToken ausente o inválida }
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Solicitar enlace de recuperación de contraseña
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200': { description: Respuesta siempre 200 por seguridad }
+        '400': { description: Email inválido }
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Restablecer contraseña con token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:    { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        '200': { description: Contraseña actualizada }
+        '400': { description: Token inválido/expirado o password muy corto }
+
+  /auth/verify-email:
+    get:
+      tags: [Auth]
+      summary: Verificar email con token
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Email verificado }
+        '400': { description: Token ausente o expirado }
+
+  # ── CATÁLOGOS ───────────────────────────────────────────────────────────────
+  /catalogos/roles:
+    get:
+      tags: [Catálogos]
+      summary: Listar roles
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Role' }
+    post:
+      tags: [Catálogos]
+      summary: Crear rol (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre]
+              properties:
+                nombre:      { type: string }
+                descripcion: { type: string }
+      responses:
+        '201': { description: Creado }
+        '403': { description: Solo admin }
+
+  /catalogos/roles/{id}:
+    put:
+      tags: [Catálogos]
+      summary: Actualizar rol
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Actualizado }
+        '404': { description: No encontrado }
+    delete:
+      tags: [Catálogos]
+      summary: Eliminar rol (soft delete)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204': { description: Eliminado }
+
+  /catalogos/tipo-proceso:
+    get:
+      tags: [Catálogos]
+      summary: Listar tipos de proceso
+      responses:
+        '200': { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/CatalogItem' } } } } }
+    post:
+      tags: [Catálogos]
+      summary: Crear tipo de proceso
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [nombre], properties: { nombre: { type: string } } }
+      responses:
+        '201': { description: Creado }
+
+  /catalogos/tipo-proceso/{id}:
+    put:
+      tags: [Catálogos]
+      summary: Actualizar tipo de proceso
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizado }
+    delete:
+      tags: [Catálogos]
+      summary: Eliminar tipo de proceso
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminado }
+
+  /catalogos/etapas-procesales:
+    get:
+      tags: [Catálogos]
+      summary: Listar etapas procesales
+      parameters:
+        - name: id_tipo_proceso
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EtapaProcesal' }
+    post:
+      tags: [Catálogos]
+      summary: Crear etapa procesal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_tipo_proceso, nombre_etapa]
+              properties:
+                id_tipo_proceso:  { type: integer }
+                nombre_etapa:     { type: string }
+                descripcion:      { type: string }
+                fundamento_legal: { type: string }
+      responses:
+        '201': { description: Creada }
+
+  /catalogos/etapas-procesales/{id}:
+    get:
+      tags: [Catálogos]
+      summary: Obtener etapa procesal
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/EtapaProcesal' } } } }
+        '404': { description: No encontrada }
+    put:
+      tags: [Catálogos]
+      summary: Actualizar etapa procesal
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizada }
+    delete:
+      tags: [Catálogos]
+      summary: Eliminar etapa procesal
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
+
+  /catalogos/tipo-proc-combo:
+    get:
+      tags: [Catálogos]
+      summary: Listar combinaciones tipo proceso / subtipo / pretensión
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TipoProcCombo' }
+    post:
+      tags: [Catálogos]
+      summary: Crear combinación
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_tipo_proceso, id_subtipo_proceso, id_tipo_pretension]
+              properties:
+                id_tipo_proceso:    { type: integer }
+                id_subtipo_proceso: { type: integer }
+                id_tipo_pretension: { type: integer }
+      responses:
+        '201': { description: Creada }
+
+  /catalogos/tipo-proc-combo/{id}:
+    delete:
+      tags: [Catálogos]
+      summary: Eliminar combinación
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
+
+  # ── CLIENTES ─────────────────────────────────────────────────────────────────
+  /clientes:
+    get:
+      tags: [Clientes]
+      summary: Listar clientes
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+        - { $ref: '#/components/parameters/LimitQuery' }
+        - { $ref: '#/components/parameters/OffsetQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:  { type: array, items: { $ref: '#/components/schemas/Cliente' } }
+                  total: { type: integer }
+        '401': { description: No autenticado }
+    post:
+      tags: [Clientes]
+      summary: Crear cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre]
+              properties:
+                nombre:           { type: string }
+                tipo_persona:     { type: string, enum: [NATURAL, JURIDICA] }
+                tipo_documento:   { type: string, enum: [CC, CE, PA, NIT, TI, PE] }
+                numero_documento: { type: string }
+                email:            { type: string, format: email }
+                telefono:         { type: string }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Cliente' } } } }
+        '400': { description: Datos inválidos }
+
+  /clientes/{id}:
+    get:
+      tags: [Clientes]
+      summary: Obtener cliente
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Cliente' } } } }
+        '404': { description: No encontrado }
+    put:
+      tags: [Clientes]
+      summary: Actualizar cliente
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Cliente' } } } }
+        '404': { description: No encontrado }
+    delete:
+      tags: [Clientes]
+      summary: Eliminar cliente (soft delete)
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminado }
+
+  # ── USERS ─────────────────────────────────────────────────────────────────────
+  /users:
+    get:
+      tags: [Users]
+      summary: Listar usuarios (solo admin)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+        '403': { description: Solo admin }
+    post:
+      tags: [Users]
+      summary: Crear usuario (solo admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre, email, password]
+              properties:
+                nombre:   { type: string }
+                email:    { type: string, format: email }
+                password: { type: string, minLength: 8 }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '409': { description: Email ya en uso }
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Obtener usuario (propio perfil o admin)
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '403': { description: Sin permiso }
+        '404': { description: No encontrado }
+    put:
+      tags: [Users]
+      summary: Actualizar usuario
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizado }
+        '404': { description: No encontrado }
+    delete:
+      tags: [Users]
+      summary: Eliminar usuario (soft delete, solo admin)
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminado }
+
+  /users/{id}/roles:
+    post:
+      tags: [Users]
+      summary: Asignar rol a usuario
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_rol]
+              properties:
+                id_rol: { type: integer }
+      responses:
+        '201': { description: Rol asignado }
+        '400': { description: id_rol requerido }
+
+  /users/{id}/roles/{rolId}:
+    delete:
+      tags: [Users]
+      summary: Quitar rol de usuario
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - name: rolId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Rol removido }
+        '404': { description: Rol no asignado }
+
+  # ── EXPEDIENTES ──────────────────────────────────────────────────────────────
+  /expedientes:
+    get:
+      tags: [Expedientes]
+      summary: Listar expedientes
+      parameters:
+        - name: id_cliente
+          in: query
+          schema: { type: integer }
+        - name: id_estado_proceso
+          in: query
+          schema: { type: integer }
+        - name: search
+          in: query
+          schema: { type: string }
+        - { $ref: '#/components/parameters/LimitQuery' }
+        - { $ref: '#/components/parameters/OffsetQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:  { type: array, items: { $ref: '#/components/schemas/Expediente' } }
+                  total: { type: integer }
+        '401': { description: No autenticado }
+    post:
+      tags: [Expedientes]
+      summary: Crear expediente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [numero_de_expediente]
+              properties:
+                numero_de_expediente:               { type: string, example: EXP-2024-001 }
+                id_cliente:                         { type: integer }
+                id_calidad_usuario:                 { type: integer }
+                id_tipo_proc_subtipo_proc_tipo_pre: { type: integer }
+                id_contraparte:                     { type: integer }
+                juzgado_o_autoridad_que_conoce:     { type: string }
+                id_estado_proceso:                  { type: integer }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Expediente' } } } }
+        '400': { description: Número de expediente requerido }
+        '403': { description: Solo admin o abogado }
+
+  /expedientes/{id}:
+    get:
+      tags: [Expedientes]
+      summary: Obtener expediente
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Expediente' } } } }
+        '404': { description: No encontrado }
+    put:
+      tags: [Expedientes]
+      summary: Actualizar expediente
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizado }
+        '404': { description: No encontrado }
+    delete:
+      tags: [Expedientes]
+      summary: Eliminar expediente (soft delete)
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminado }
+
+  /expedientes/{id}/etapas:
+    get:
+      tags: [Expedientes]
+      summary: Listar etapas del expediente
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ExpedienteEtapa' }
+    post:
+      tags: [Expedientes]
+      summary: Agregar etapa al expediente
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_etapa:               { type: integer }
+                id_iter_plantilla:      { type: integer }
+                orden:                  { type: integer }
+                fecha_inicio:           { type: string, format: date }
+                fecha_vencimiento:      { type: string, format: date }
+                id_usuario_responsable: { type: integer }
+      responses:
+        '201': { description: Etapa creada }
+
+  /expedientes/{id}/etapas/{etapaId}:
+    put:
+      tags: [Expedientes]
+      summary: Actualizar etapa del expediente
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - name: etapaId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizada }
+        '404': { description: No encontrada }
+    delete:
+      tags: [Expedientes]
+      summary: Eliminar etapa del expediente
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - name: etapaId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Eliminada }
+
+  # ── ITER PROCESAL ─────────────────────────────────────────────────────────────
+  /iter-procesal:
+    get:
+      tags: [Iter Procesal]
+      summary: Listar plantillas de iter procesal
+      parameters:
+        - name: id_combo
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IterProcesalPlantilla' }
+    post:
+      tags: [Iter Procesal]
+      summary: Crear plantilla de iter procesal (solo admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_tipo_proc_subtipo_proc_tipo_pre, id_etapa, orden]
+              properties:
+                id_tipo_proc_subtipo_proc_tipo_pre: { type: integer }
+                id_etapa:                           { type: integer }
+                orden:                              { type: integer }
+                plazo_dias:                         { type: integer }
+                dias_habiles:                       { type: boolean }
+                es_obligatoria:                     { type: boolean }
+      responses:
+        '201': { description: Creada }
+        '403': { description: Solo admin }
+
+  /iter-procesal/{id}:
+    get:
+      tags: [Iter Procesal]
+      summary: Obtener plantilla
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/IterProcesalPlantilla' } } } }
+        '404': { description: No encontrada }
+    put:
+      tags: [Iter Procesal]
+      summary: Actualizar plantilla
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizada }
+    delete:
+      tags: [Iter Procesal]
+      summary: Eliminar plantilla
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
+
+  /iter-procesal/{id}/tareas:
+    get:
+      tags: [Iter Procesal]
+      summary: Listar tareas de plantilla
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TareaPlantilla' }
+    post:
+      tags: [Iter Procesal]
+      summary: Crear tarea de plantilla
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [titulo]
+              properties:
+                titulo:           { type: string }
+                descripcion:      { type: string }
+                dias_desde_etapa: { type: integer }
+                id_prioridad:     { type: integer }
+      responses:
+        '201': { description: Creada }
+        '400': { description: Título requerido }
+
+  /iter-procesal/{id}/tareas/{tareaId}:
+    put:
+      tags: [Iter Procesal]
+      summary: Actualizar tarea de plantilla
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - name: tareaId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizada }
+    delete:
+      tags: [Iter Procesal]
+      summary: Eliminar tarea de plantilla
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - name: tareaId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Eliminada }
+
+  # ── TAREAS ───────────────────────────────────────────────────────────────────
+  /tareas/mis-tareas:
+    get:
+      tags: [Tareas]
+      summary: Listar mis tareas asignadas
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Tarea' }
+
+  /tareas/proximas-vencer:
+    get:
+      tags: [Tareas]
+      summary: Tareas próximas a vencer
+      parameters:
+        - name: dias
+          in: query
+          schema: { type: integer, default: 7 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Tarea' }
+
+  /tareas:
+    get:
+      tags: [Tareas]
+      summary: Listar tareas
+      parameters:
+        - name: id_expediente
+          in: query
+          schema: { type: integer }
+        - name: id_usuario_asignado
+          in: query
+          schema: { type: integer }
+        - { $ref: '#/components/parameters/LimitQuery' }
+        - { $ref: '#/components/parameters/OffsetQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Tarea' }
+        '401': { description: No autenticado }
+    post:
+      tags: [Tareas]
+      summary: Crear tarea
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [titulo]
+              properties:
+                titulo:              { type: string }
+                descripcion:         { type: string }
+                id_expediente:       { type: integer }
+                id_usuario_asignado: { type: integer }
+                id_prioridad:        { type: integer }
+                fecha_limite:        { type: string, format: date }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Tarea' } } } }
+        '400': { description: Título requerido }
+        '403': { description: Clientes no pueden crear tareas }
+
+  /tareas/{id}:
+    get:
+      tags: [Tareas]
+      summary: Obtener tarea
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Tarea' } } } }
+        '404': { description: No encontrada }
+    put:
+      tags: [Tareas]
+      summary: Actualizar tarea
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizada }
+        '404': { description: No encontrada }
+    delete:
+      tags: [Tareas]
+      summary: Eliminar tarea (soft delete)
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
+
+  /tareas/{id}/checklist:
+    get:
+      tags: [Tareas]
+      summary: Obtener checklist de la tarea
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ChecklistItem' }
+    post:
+      tags: [Tareas]
+      summary: Agregar ítem al checklist
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [descripcion]
+              properties:
+                descripcion: { type: string }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/ChecklistItem' } } } }
+        '400': { description: Descripción requerida }
+
+  /tareas/{id}/checklist/{itemId}:
+    put:
+      tags: [Tareas]
+      summary: Actualizar ítem del checklist
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - { $ref: '#/components/parameters/ItemIdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                completado:  { type: boolean }
+                descripcion: { type: string }
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/ChecklistItem' } } } }
+        '404': { description: No encontrado }
+    delete:
+      tags: [Tareas]
+      summary: Eliminar ítem del checklist
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - { $ref: '#/components/parameters/ItemIdPath' }
+      responses:
+        '204': { description: Eliminado }
+
+  # ── ACTUACIONES ───────────────────────────────────────────────────────────────
+  /actuaciones:
+    get:
+      tags: [Actuaciones]
+      summary: Listar actuaciones
+      parameters:
+        - name: id_expediente
+          in: query
+          schema: { type: integer }
+        - { $ref: '#/components/parameters/LimitQuery' }
+        - { $ref: '#/components/parameters/OffsetQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Actuacion' }
+    post:
+      tags: [Actuaciones]
+      summary: Registrar actuación
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_expediente, fecha_actuacion]
+              properties:
+                id_expediente:      { type: integer }
+                fecha_actuacion:    { type: string, format: date }
+                id_tipo_actuacion:  { type: integer }
+                titulo:             { type: string }
+                descripcion:        { type: string }
+                autoridad_emite:    { type: string }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Actuacion' } } } }
+        '400': { description: id_expediente y fecha_actuacion requeridos }
+        '403': { description: Solo admin o abogado }
+
+  /actuaciones/{id}:
+    get:
+      tags: [Actuaciones]
+      summary: Obtener actuación
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Actuacion' } } } }
+        '404': { description: No encontrada }
+    put:
+      tags: [Actuaciones]
+      summary: Actualizar actuación
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizada }
+        '404': { description: No encontrada }
+    delete:
+      tags: [Actuaciones]
+      summary: Eliminar actuación
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
+
+  # ── NOTIFICACIONES ────────────────────────────────────────────────────────────
+  /notificaciones/proximas-vencer:
+    get:
+      tags: [Notificaciones]
+      summary: Notificaciones próximas a vencer
+      parameters:
+        - name: dias
+          in: query
+          schema: { type: integer, default: 7 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notificacion' }
+
+  /notificaciones:
+    get:
+      tags: [Notificaciones]
+      summary: Listar notificaciones
+      parameters:
+        - name: id_expediente
+          in: query
+          schema: { type: integer }
+        - { $ref: '#/components/parameters/LimitQuery' }
+        - { $ref: '#/components/parameters/OffsetQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notificacion' }
+    post:
+      tags: [Notificaciones]
+      summary: Registrar notificación
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_expediente, fecha_notificacion]
+              properties:
+                id_expediente:         { type: integer }
+                fecha_notificacion:    { type: string, format: date }
+                id_tipo_notificacion:  { type: integer }
+                id_medio_notificacion: { type: integer }
+                parte_notificada:      { type: string }
+                destinatario:          { type: string }
+                dias_plazo:            { type: integer }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Notificacion' } } } }
+        '400': { description: Campos requeridos faltantes }
+
+  /notificaciones/{id}:
+    get:
+      tags: [Notificaciones]
+      summary: Obtener notificación
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Notificacion' } } } }
+        '404': { description: No encontrada }
+    put:
+      tags: [Notificaciones]
+      summary: Actualizar notificación
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizada }
+    delete:
+      tags: [Notificaciones]
+      summary: Eliminar notificación
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
+
+  # ── AUDIENCIAS ────────────────────────────────────────────────────────────────
+  /audiencias/proximas:
+    get:
+      tags: [Audiencias]
+      summary: Audiencias próximas
+      parameters:
+        - name: dias
+          in: query
+          schema: { type: integer, default: 30 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Audiencia' }
+
+  /audiencias:
+    get:
+      tags: [Audiencias]
+      summary: Listar audiencias
+      parameters:
+        - name: id_expediente
+          in: query
+          schema: { type: integer }
+        - { $ref: '#/components/parameters/LimitQuery' }
+        - { $ref: '#/components/parameters/OffsetQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Audiencia' }
+    post:
+      tags: [Audiencias]
+      summary: Programar audiencia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_expediente, fecha_audiencia]
+              properties:
+                id_expediente:          { type: integer }
+                fecha_audiencia:        { type: string, format: date-time }
+                tipo_audiencia:         { type: string }
+                modalidad:              { type: string, enum: [presencial, virtual, mixta] }
+                enlace_virtual:         { type: string }
+                juzgado_o_autoridad:    { type: string }
+                id_usuario_responsable: { type: integer }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Audiencia' } } } }
+        '400': { description: Campos requeridos faltantes }
+
+  /audiencias/{id}:
+    get:
+      tags: [Audiencias]
+      summary: Obtener audiencia
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Audiencia' } } } }
+        '404': { description: No encontrada }
+    put:
+      tags: [Audiencias]
+      summary: Actualizar audiencia
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizada }
+    delete:
+      tags: [Audiencias]
+      summary: Eliminar audiencia
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
+
+  # ── DOCUMENTOS ────────────────────────────────────────────────────────────────
+  /documentos:
+    get:
+      tags: [Documentos]
+      summary: Listar documentos
+      parameters:
+        - name: id_expediente
+          in: query
+          schema: { type: integer }
+        - name: visibilidad_cliente
+          in: query
+          schema: { type: boolean }
+        - { $ref: '#/components/parameters/LimitQuery' }
+        - { $ref: '#/components/parameters/OffsetQuery' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Documento' }
+    post:
+      tags: [Documentos]
+      summary: Registrar documento
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_expediente, nombre_archivo]
+              properties:
+                id_expediente:       { type: integer }
+                nombre_archivo:      { type: string }
+                id_tipo_documento:   { type: integer }
+                titulo:              { type: string }
+                url_storage:         { type: string }
+                mime_type:           { type: string }
+                visibilidad_cliente: { type: boolean }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Documento' } } } }
+        '400': { description: Campos requeridos faltantes }
+
+  /documentos/{id}:
+    get:
+      tags: [Documentos]
+      summary: Obtener documento
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Documento' } } } }
+        '404': { description: No encontrado }
+    put:
+      tags: [Documentos]
+      summary: Actualizar documento
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizado }
+    delete:
+      tags: [Documentos]
+      summary: Eliminar documento
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminado }
+
+  # ── FINANCIERO ────────────────────────────────────────────────────────────────
+  /financiero/honorarios:
+    get:
+      tags: [Financiero]
+      summary: Listar honorarios
+      parameters:
+        - name: id_expediente
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Honorario' }
+    post:
+      tags: [Financiero]
+      summary: Crear honorario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_expediente]
+              properties:
+                id_expediente:          { type: integer }
+                modalidad:              { type: string }
+                monto_total_pactado:    { type: number }
+                moneda:                 { type: string, example: COP }
+                porcentaje_cuota_litis: { type: number }
+                fecha_pacto:            { type: string, format: date }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Honorario' } } } }
+        '400': { description: id_expediente requerido }
+
+  /financiero/honorarios/{id}:
+    get:
+      tags: [Financiero]
+      summary: Obtener honorario
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Honorario' } } } }
+        '404': { description: No encontrado }
+    put:
+      tags: [Financiero]
+      summary: Actualizar honorario
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizado }
+    delete:
+      tags: [Financiero]
+      summary: Eliminar honorario
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminado }
+
+  /financiero/pagos:
+    get:
+      tags: [Financiero]
+      summary: Listar pagos
+      parameters:
+        - name: id_expediente
+          in: query
+          schema: { type: integer }
+        - name: id_honorario
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Pago' }
+    post:
+      tags: [Financiero]
+      summary: Registrar pago
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_expediente, fecha_pago, monto]
+              properties:
+                id_expediente: { type: integer }
+                id_honorario:  { type: integer }
+                fecha_pago:    { type: string, format: date }
+                monto:         { type: number }
+                moneda:        { type: string }
+                metodo_pago:   { type: string }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Pago' } } } }
+
+  /financiero/pagos/{id}:
+    get:
+      tags: [Financiero]
+      summary: Obtener pago
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Pago' } } } }
+        '404': { description: No encontrado }
+    put:
+      tags: [Financiero]
+      summary: Actualizar pago
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizado }
+
+  /financiero/gastos:
+    get:
+      tags: [Financiero]
+      summary: Listar gastos del proceso
+      parameters:
+        - name: id_expediente
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/GastoProceso' }
+    post:
+      tags: [Financiero]
+      summary: Registrar gasto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_expediente, fecha_gasto, monto]
+              properties:
+                id_expediente:   { type: integer }
+                fecha_gasto:     { type: string, format: date }
+                monto:           { type: number }
+                categoria_gasto: { type: string }
+                descripcion:     { type: string }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/GastoProceso' } } } }
+
+  /financiero/gastos/{id}:
+    get:
+      tags: [Financiero]
+      summary: Obtener gasto
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/GastoProceso' } } } }
+        '404': { description: No encontrado }
+    put:
+      tags: [Financiero]
+      summary: Actualizar gasto
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizado }
+    delete:
+      tags: [Financiero]
+      summary: Eliminar gasto
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminado }
+
+  /financiero/resumen/{idExpediente}:
+    get:
+      tags: [Financiero]
+      summary: Resumen financiero del expediente
+      parameters:
+        - name: idExpediente
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumenFinanciero' }
+
+  # ── KANBAN ────────────────────────────────────────────────────────────────────
+  /kanban/tableros:
+    get:
+      tags: [Kanban]
+      summary: Listar tableros del usuario
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Tablero' }
+    post:
+      tags: [Kanban]
+      summary: Crear tablero
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre]
+              properties:
+                nombre:       { type: string }
+                descripcion:  { type: string }
+                id_expediente: { type: integer }
+                es_publico:   { type: boolean }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Tablero' } } } }
+        '400': { description: Nombre requerido }
+
+  /kanban/tableros/{id}:
+    get:
+      tags: [Kanban]
+      summary: Obtener tablero
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Tablero' } } } }
+        '404': { description: No encontrado }
+    put:
+      tags: [Kanban]
+      summary: Actualizar tablero
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizado }
+    delete:
+      tags: [Kanban]
+      summary: Eliminar tablero
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminado }
+
+  /kanban/tableros/{id}/usuarios:
+    post:
+      tags: [Kanban]
+      summary: Agregar usuario al tablero
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_usuario]
+              properties:
+                id_usuario: { type: integer }
+      responses:
+        '201': { description: Usuario agregado }
+        '400': { description: id_usuario requerido }
+
+  /kanban/tableros/{id}/usuarios/{usuarioId}:
+    delete:
+      tags: [Kanban]
+      summary: Quitar usuario del tablero
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - name: usuarioId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Eliminado }
+
+  /kanban/tableros/{id}/columnas:
+    get:
+      tags: [Kanban]
+      summary: Listar columnas del tablero
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ColumnaKanban' }
+    post:
+      tags: [Kanban]
+      summary: Crear columna en tablero
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre, orden]
+              properties:
+                nombre: { type: string }
+                orden:  { type: integer }
+                color:  { type: string }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/ColumnaKanban' } } } }
+
+  /kanban/columnas/{id}:
+    put:
+      tags: [Kanban]
+      summary: Actualizar columna
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizada }
+    delete:
+      tags: [Kanban]
+      summary: Eliminar columna
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
+
+  /kanban/columnas/{id}/estados:
+    post:
+      tags: [Kanban]
+      summary: Mapear estado a columna
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_estado_tarea: { type: integer }
+                id_estado_etapa: { type: integer }
+      responses:
+        '201': { description: Estado mapeado }
+
+  /kanban/columnas/{id}/posiciones:
+    get:
+      tags: [Kanban]
+      summary: Listar posiciones de la columna
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/KanbanPosicion' }
+
+  /kanban/posiciones:
+    post:
+      tags: [Kanban]
+      summary: Crear o actualizar posición (upsert)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_tablero, id_columna, tipo_entidad]
+              properties:
+                id_tablero:   { type: integer }
+                id_columna:   { type: integer }
+                tipo_entidad: { type: string, enum: [TAREA, ETAPA] }
+                id_tarea:     { type: integer }
+                id_expediente_etapa: { type: integer }
+                orden_vertical: { type: integer }
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/KanbanPosicion' } } } }
+
+  /kanban/posiciones/{id}:
+    delete:
+      tags: [Kanban]
+      summary: Eliminar posición
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
+
+  # ── COLABORACIÓN ──────────────────────────────────────────────────────────────
+  /colaboracion/etiquetas:
+    get:
+      tags: [Colaboración]
+      summary: Listar etiquetas
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Etiqueta' }
+    post:
+      tags: [Colaboración]
+      summary: Crear etiqueta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre]
+              properties:
+                nombre: { type: string }
+                color:  { type: string }
+                icono:  { type: string }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Etiqueta' } } } }
+
+  /colaboracion/etiquetas/entidad:
+    post:
+      tags: [Colaboración]
+      summary: Asignar etiqueta a una entidad
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipo_entidad, id_etiqueta]
+              properties:
+                tipo_entidad: { type: string, example: tarea }
+                id_tarea:     { type: integer }
+                id_expediente_etapa: { type: integer }
+                id_etiqueta:  { type: integer }
+      responses:
+        '201': { description: Asignada }
+
+  /colaboracion/etiquetas/{id}:
+    get:
+      tags: [Colaboración]
+      summary: Obtener etiqueta
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Etiqueta' } } } }
+        '404': { description: No encontrada }
+    put:
+      tags: [Colaboración]
+      summary: Actualizar etiqueta
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Actualizada }
+    delete:
+      tags: [Colaboración]
+      summary: Eliminar etiqueta
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
+
+  /colaboracion/comentarios:
+    get:
+      tags: [Colaboración]
+      summary: Listar comentarios
+      parameters:
+        - name: tipo_entidad
+          in: query
+          schema: { type: string }
+        - name: id_tarea
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Comentario' }
+    post:
+      tags: [Colaboración]
+      summary: Crear comentario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipo_entidad, contenido]
+              properties:
+                tipo_entidad: { type: string }
+                contenido:    { type: string }
+                id_tarea:     { type: integer }
+                id_parent:    { type: integer }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Comentario' } } } }
+
+  /colaboracion/comentarios/{id}:
+    get:
+      tags: [Colaboración]
+      summary: Obtener comentario
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Comentario' } } } }
+        '404': { description: No encontrado }
+    put:
+      tags: [Colaboración]
+      summary: Editar comentario
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contenido]
+              properties:
+                contenido: { type: string }
+      responses:
+        '200': { description: Actualizado }
+    delete:
+      tags: [Colaboración]
+      summary: Eliminar comentario
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminado }
+
+  /colaboracion/comentarios/{id}/replies:
+    get:
+      tags: [Colaboración]
+      summary: Respuestas a un comentario
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Comentario' }
+
+  /colaboracion/comentarios/{id}/menciones:
+    post:
+      tags: [Colaboración]
+      summary: Mencionar usuario en comentario
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_usuario]
+              properties:
+                id_usuario: { type: integer }
+      responses:
+        '201': { description: Mención registrada }
+
+  /colaboracion/comentarios/{id}/menciones/{usuarioId}:
+    delete:
+      tags: [Colaboración]
+      summary: Quitar mención
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - name: usuarioId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Eliminada }
+
+  /colaboracion/adjuntos:
+    get:
+      tags: [Colaboración]
+      summary: Listar adjuntos
+      parameters:
+        - name: tipo_entidad
+          in: query
+          schema: { type: string }
+        - name: id_tarea
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Adjunto' }
+    post:
+      tags: [Colaboración]
+      summary: Registrar adjunto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipo_entidad, nombre_archivo]
+              properties:
+                tipo_entidad:   { type: string }
+                nombre_archivo: { type: string }
+                url_archivo:    { type: string }
+                mime_type:      { type: string }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Adjunto' } } } }
+
+  /colaboracion/adjuntos/{id}:
+    delete:
+      tags: [Colaboración]
+      summary: Eliminar adjunto
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminado }
+
+  /colaboracion/dependencias:
+    get:
+      tags: [Colaboración]
+      summary: Listar dependencias entre tareas/etapas
+      parameters:
+        - name: id_tarea_origen
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Dependencia' }
+    post:
+      tags: [Colaboración]
+      summary: Crear dependencia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tipo_dependencia: { type: string }
+                es_bloqueante:    { type: boolean }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Dependencia' } } } }
+
+  /colaboracion/dependencias/{id}:
+    delete:
+      tags: [Colaboración]
+      summary: Eliminar dependencia
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Eliminada }
