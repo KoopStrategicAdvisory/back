@@ -97,6 +97,30 @@ describe('Repositorio users', () => {
     expect(roles.some((x) => x.nombre === 'abogado')).toBe(false);
   });
 
+  // La cuenta que firma los registros automáticos de Rama Judicial NO es una
+  // persona: si saliera en Prospectos, un administrador podría descartarla.
+  test('las cuentas de servicio (@koop.internal) no salen en usuarios ni en prospectos y no se pueden descartar', async () => {
+    const db = await getDb();
+    await db.query(`INSERT INTO users (nombre, email, password_hash, active) VALUES
+      ('Sistema Koop (prueba)', 'sistema.prueba@koop.internal', 'x', false),
+      ('Persona Pendiente', 'pendiente.real@correo.test', 'x', false)`);
+
+    const prospectos = await users.findPendientesSinCliente();
+    expect(prospectos.map((u) => u.email)).toContain('pendiente.real@correo.test');
+    expect(prospectos.map((u) => u.email)).not.toContain('sistema.prueba@koop.internal');
+
+    const inactivos = await users.findAll({ active: false });
+    expect(inactivos.map((u) => u.email)).not.toContain('sistema.prueba@koop.internal');
+
+    const { rows: [servicio] } = await db.query(`SELECT id FROM users WHERE email = 'sistema.prueba@koop.internal'`);
+    expect(await users.hardDeletePendiente(Number(servicio.id))).toBeNull();
+    const { rows } = await db.query(`SELECT 1 FROM users WHERE id = $1`, [servicio.id]);
+    expect(rows).toHaveLength(1);
+
+    // Limpieza: que no afecte al resto de pruebas.
+    await db.query(`DELETE FROM users WHERE email IN ('sistema.prueba@koop.internal','pendiente.real@correo.test')`);
+  });
+
   test('update modifica campos permitidos', async () => {
     const updated = await users.update(lawyerId, { cargo: 'Asociado Senior' }, adminId);
     expect(updated.cargo).toBe('Asociado Senior');

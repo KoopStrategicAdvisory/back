@@ -1,6 +1,12 @@
 'use strict';
 const { getDb, withUser } = require('../db/client');
 
+// Cuentas de servicio (p. ej. la que firma los registros automáticos de Rama
+// Judicial, sistema.rama-judicial@koop.internal): no son personas, así que no
+// deben aparecer en las listas de usuarios ni de prospectos, ni poderse
+// descartar o editar desde ahí.
+const NO_ES_CUENTA_DE_SERVICIO = "u.email NOT LIKE '%@koop.internal'";
+
 async function findAll({ active = true, limit = 50, offset = 0 } = {}) {
   const db = await getDb();
   const { rows } = await db.query(`
@@ -11,7 +17,7 @@ async function findAll({ active = true, limit = 50, offset = 0 } = {}) {
     FROM users u
     LEFT JOIN user_rol ur ON ur.id_usuario = u.id
     LEFT JOIN roles r     ON r.id = ur.id_rol
-    WHERE u.active = $1
+    WHERE u.active = $1 AND ${NO_ES_CUENTA_DE_SERVICIO}
     GROUP BY u.id
     ORDER BY u.nombre
     LIMIT $2 OFFSET $3
@@ -59,9 +65,9 @@ async function findByEmail(email) {
 async function findPendientesSinCliente({ limit = 100, offset = 0 } = {}) {
   const db = await getDb();
   const { rows } = await db.query(`
-    SELECT id, nombre, email, tipo_documento, numero_documento, telefono_principal, created_at
-    FROM users
-    WHERE active = FALSE AND id_cliente IS NULL
+    SELECT u.id, u.nombre, u.email, u.tipo_documento, u.numero_documento, u.telefono_principal, u.created_at
+    FROM users u
+    WHERE u.active = FALSE AND u.id_cliente IS NULL AND ${NO_ES_CUENTA_DE_SERVICIO}
     ORDER BY created_at DESC
     LIMIT $1 OFFSET $2
   `, [limit, offset]);
@@ -75,7 +81,7 @@ async function findPendientesSinCliente({ limit = 100, offset = 0 } = {}) {
 async function hardDeletePendiente(id) {
   const db = await getDb();
   const { rows } = await db.query(
-    `DELETE FROM users WHERE id = $1 AND active = FALSE AND id_cliente IS NULL RETURNING id`, [id]
+    `DELETE FROM users u WHERE u.id = $1 AND u.active = FALSE AND u.id_cliente IS NULL AND ${NO_ES_CUENTA_DE_SERVICIO} RETURNING u.id`, [id]
   );
   return rows[0] ?? null;
 }
