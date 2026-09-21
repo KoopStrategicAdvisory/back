@@ -24,6 +24,43 @@ process.env.AWS_ACCESS_KEY_ID = '';
 process.env.AWS_SECRET_ACCESS_KEY = '';
 process.env.RESEND_API_KEY = '';
 
+// S3 falso en memoria: las pruebas de documentos suben, descargan y borran
+// archivos de verdad contra este stub, sin tocar el bucket real. Se aplica
+// ANTES de cargar la app, porque los módulos toman las funciones al importarse.
+// Las URLs de descarga apuntan a un mini servidor local (puerto 4101).
+function instalarS3Falso() {
+  const http = require('http');
+  const s3 = require('../src/services/s3');
+  const store = new Map();
+  const PORT_BLOBS = Number(process.env.E2E_S3_PORT || 4101);
+  http.createServer((req, res) => {
+    const key = decodeURIComponent(req.url.slice(1).split('?')[0]);
+    const obj = store.get(key);
+    if (!obj) { res.writeHead(404); return res.end(); }
+    res.writeHead(200, { 'Content-Type': obj.contentType || 'application/octet-stream', 'Access-Control-Allow-Origin': '*' });
+    res.end(obj.body);
+  }).listen(PORT_BLOBS);
+  Object.assign(s3, {
+    async uploadBuffer({ key, body, contentType }) { store.set(key, { body, contentType }); return { key }; },
+    async listObjects({ prefix }) { return [...store.keys()].filter((k) => k.startsWith(prefix)).map((Key) => ({ Key })); },
+    async getSignedDownloadUrl({ key }) { return `http://localhost:${PORT_BLOBS}/${encodeURIComponent(key)}`; },
+    async deleteObject({ key }) { store.delete(key); return { key }; },
+    async deletePrefix({ prefix }) {
+      let deleted = 0;
+      for (const k of [...store.keys()]) if (k.startsWith(prefix)) { store.delete(k); deleted++; }
+      return { prefix, deleted };
+    },
+    async renamePrefix({ fromPrefix, toPrefix }) {
+      const mapping = [];
+      for (const k of [...store.keys()]) if (k.startsWith(fromPrefix)) {
+        const to = toPrefix + k.slice(fromPrefix.length);
+        store.set(to, store.get(k)); store.delete(k); mapping.push({ from: k, to });
+      }
+      return { renamed: mapping.length, mapping };
+    },
+  });
+}
+
 const PASSWORD = 'E2eTest12345!';
 const USERS = [
   { nombre: 'E2E Admin', email: 'e2e.admin@koop.test', rol: 'admin' },
@@ -66,6 +103,7 @@ async function seedUsers() {
   await recreateDatabase();
   await require('../src/db/client').getDb(); // crea schema + seed + migraciones
   await seedUsers();
+  instalarS3Falso();
   console.log(`[e2e] base ${DB} lista, arrancando API en el puerto ${process.env.PORT}`);
   require('../src/index.js');
 })().catch((e) => { console.error('[e2e] no se pudo preparar el entorno:', e); process.exit(1); });
