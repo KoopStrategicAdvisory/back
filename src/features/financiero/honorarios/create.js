@@ -6,6 +6,10 @@ const { financiero } = require('../../../repositories');
 
 const rules = [
   body('id_expediente').isInt({ min: 1 }).withMessage('id_expediente requerido.'),
+  // honorarios.modalidad es NOT NULL con CHECK: sin esta regla, omitirla daba un
+  // 500 de la base de datos en vez de un 400 claro.
+  body('modalidad').isIn(['fijo', 'por_etapa', 'cuota_litis', 'por_hora', 'mixto'])
+    .withMessage('La modalidad de honorarios es requerida (fijo, por_etapa, cuota_litis, por_hora o mixto).'),
   body('monto_total_pactado').optional().isFloat({ min: 0 }),
   body('moneda').optional().isLength({ min: 3, max: 3 }),
 ];

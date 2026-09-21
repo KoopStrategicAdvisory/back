@@ -46,14 +46,17 @@ function makeApp() {
  */
 async function seedRoles(db) {
   await db.query(`
-    INSERT INTO roles (nombre) VALUES ('admin'), ('lawyer'), ('client')
+    INSERT INTO roles (nombre) VALUES ('admin'), ('abogado'), ('cliente')
     ON CONFLICT (nombre) DO NOTHING
   `);
   const { rows } = await db.query(
-    `SELECT id, nombre FROM roles WHERE nombre IN ('admin','lawyer','client')`
+    `SELECT id, nombre FROM roles WHERE nombre IN ('admin','abogado','cliente')`
   );
   const map = {};
-  for (const r of rows) map[r.nombre + 'RoleId'] = Number(r.id);
+  // Los nombres reales del catálogo están en español (ver seed.sql); las claves
+  // del resultado conservan lawyer/client para no reescribir todas las pruebas.
+  const clave = { admin: 'admin', abogado: 'lawyer', cliente: 'client' };
+  for (const r of rows) map[clave[r.nombre] + 'RoleId'] = Number(r.id);
   return map; // { adminRoleId, lawyerRoleId, clientRoleId }
 }
 
@@ -132,4 +135,47 @@ async function seedTareasCatalogos(db) {
   };
 }
 
-module.exports = { makeApp, seedRoles, seedUser, assignRole, tokenFor, seedEstadoProceso, seedTareasCatalogos };
+/**
+ * Seeds una materia mínima (tipo de proceso / subtipo / pretensión + su combo).
+ * expediente.id_tipo_proc_subtipo_proc_tipo_pre es NOT NULL, así que todo
+ * expediente de prueba necesita un combo válido. Devuelve { comboId }.
+ */
+async function seedMateria(db) {
+  await db.query(`INSERT INTO tipo_proceso (id, nombre) VALUES (1, 'Civil') ON CONFLICT DO NOTHING`);
+  await db.query(`INSERT INTO subtipo_proceso (id, nombre) VALUES (1, 'General') ON CONFLICT DO NOTHING`);
+  await db.query(`INSERT INTO tipo_pretension (id, nombre) VALUES (1, 'General') ON CONFLICT DO NOTHING`);
+  await db.query(
+    `INSERT INTO tipo_proc_subtipo_proc_tipo_pre (id, id_tipo_proceso, id_subtipo_proceso, id_tipo_pretension)
+     VALUES (1, 1, 1, 1) ON CONFLICT DO NOTHING`
+  );
+  return { comboId: 1 };
+}
+
+/**
+ * Cuerpo válido para POST /api/expedientes: además del número exige materia,
+ * contraparte y correo del juzgado. `extra` sobreescribe/agrega campos.
+ */
+function datosExpediente(comboId, extra = {}) {
+  return {
+    id_tipo_proc_subtipo_proc_tipo_pre: comboId,
+    contraparte: 'Contraparte de prueba',
+    correo_juzgado: 'juzgado@prueba.test',
+    ...extra,
+  };
+}
+
+/** Tipo de actuación mínimo: actuaciones.id_tipo_actuacion es NOT NULL. */
+async function seedTipoActuacion(db) {
+  await db.query(`INSERT INTO tipo_actuacion (nombre) VALUES ('Memorial') ON CONFLICT (nombre) DO NOTHING`);
+  const { rows: [r] } = await db.query(`SELECT id FROM tipo_actuacion WHERE nombre = 'Memorial'`);
+  return { tipoActuacionId: Number(r.id) };
+}
+
+/** Estado de etapa mínimo: expediente_etapas.id_estado_etapa es NOT NULL. */
+async function seedEstadoEtapa(db) {
+  await db.query(`INSERT INTO estado_etapa (nombre) VALUES ('Pendiente') ON CONFLICT (nombre) DO NOTHING`);
+  const { rows: [r] } = await db.query(`SELECT id FROM estado_etapa WHERE nombre = 'Pendiente'`);
+  return { estadoEtapaId: Number(r.id) };
+}
+
+module.exports = { seedTipoActuacion, seedEstadoEtapa, makeApp, seedRoles, seedUser, assignRole, tokenFor, seedEstadoProceso, seedTareasCatalogos, seedMateria, datosExpediente };

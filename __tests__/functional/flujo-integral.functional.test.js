@@ -35,7 +35,7 @@ jest.mock('../../src/db/client', () => {
 const request = require('supertest');
 const { getDb } = require('../../src/db/client');
 const {
-  makeApp, seedRoles, seedUser, assignRole, tokenFor,
+  makeApp, seedRoles, seedMateria, seedTipoActuacion, datosExpediente, seedUser, assignRole, tokenFor,
   seedTareasCatalogos,
 } = require('./helpers');
 
@@ -49,6 +49,9 @@ let lawyerToken;
 let adminId;
 let lawyerId;
 let lawyerRoleId;
+let comboId;
+let tipoActuacionId;
+let estadoPendienteId;
 let clienteId;
 let expedienteId;
 let tareaId;
@@ -68,9 +71,12 @@ beforeAll(async () => {
   const db  = await getDb();
   const roles = await seedRoles(db);
   lawyerRoleId = roles.lawyerRoleId;
+  ({ comboId } = await seedMateria(db));
+  ({ tipoActuacionId } = await seedTipoActuacion(db));
 
   const cats = await seedTareasCatalogos(db);
   estadoCompletadoId = cats.estadoCompletadoId;
+  estadoPendienteId = cats.estadoPendienteId;
 
   // Seed estado_proceso for expediente
   await db.query(
@@ -108,7 +114,7 @@ describe('Paso 1-2: Onboarding del abogado', () => {
 
     expect(res.status).toBe(201);
     lawyerId    = res.body.id;
-    lawyerToken = tokenFor({ id: lawyerId, nombre: 'Lic. García', email: 'garcia@koop.test', roles: ['lawyer'] });
+    lawyerToken = tokenFor({ id: lawyerId, nombre: 'Lic. García', email: 'garcia@koop.test', roles: ['abogado'] });
   });
 
   test('Admin asigna rol lawyer → 201', async () => {
@@ -126,7 +132,7 @@ describe('Paso 1-2: Onboarding del abogado', () => {
       .send({ email: 'garcia@koop.test', password: 'Lawyer1234!' });
 
     expect(res.status).toBe(200);
-    expect(res.body.user.roles).toContain('lawyer');
+    expect(res.body.user.roles).toContain('abogado');
   });
 });
 
@@ -154,11 +160,11 @@ describe('Paso 3-5: Cliente y expediente', () => {
     const res = await request(app)
       .post('/api/expedientes')
       .set('Authorization', `Bearer ${lawyerToken}`)
-      .send({
+      .send(datosExpediente(comboId, {
         numero_de_expediente:          'EXP-INT-2026-001',
         id_cliente:                    clienteId,
         juzgado_o_autoridad_que_conoce: 'Tribunal Administrativo del Cundinamarca',
-      });
+      }));
 
     expect(res.status).toBe(201);
     expedienteId = res.body.id;
@@ -187,6 +193,7 @@ describe('Paso 6-8: Tareas y asignación', () => {
       .send({
         titulo:              'Preparar demanda de nulidad',
         id_expediente:       expedienteId,
+        id_estado_tarea:     estadoPendienteId,
         id_usuario_asignado: lawyerId,
         fecha_limite:        tomorrow(),
       });
@@ -229,6 +236,7 @@ describe('Paso 9: Actuaciones del expediente', () => {
         id_expediente: expedienteId,
         fecha:         new Date().toISOString().split('T')[0],
         titulo:        'Radicación de demanda',
+        id_tipo_actuacion: tipoActuacionId,
         descripcion:   'Radicación de demanda ante el Tribunal',
       });
 
@@ -288,6 +296,7 @@ describe('Paso 11-13: Honorarios y pagos', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         id_expediente:       expedienteId,
+        modalidad:           'fijo',
         monto_total_pactado: 5000000,
         moneda:              'COP',
       });
@@ -358,6 +367,6 @@ describe('Paso 14-16: Vistas globales y dashboard', () => {
     expect(Array.isArray(res.body)).toBe(true);
     const nombres = res.body.map((r) => r.nombre);
     expect(nombres).toContain('admin');
-    expect(nombres).toContain('lawyer');
+    expect(nombres).toContain('abogado');
   });
 });

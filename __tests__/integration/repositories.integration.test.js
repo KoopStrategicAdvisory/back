@@ -23,16 +23,18 @@ const clientes   = require('../../src/repositories/clientes');
 const expedientes = require('../../src/repositories/expedientes');
 const tareas     = require('../../src/repositories/tareas');
 const financiero = require('../../src/repositories/financiero');
-const { seedRoles, seedUser, assignRole } = require('../functional/helpers');
+const { seedRoles, seedUser, assignRole, seedMateria, seedEstadoEtapa } = require('../functional/helpers');
 
 let adminId, lawyerId, adminRoleId, lawyerRoleId;
-let clienteId, expedienteId;
+let clienteId, expedienteId, comboId, estadoEtapaId;
 
 beforeAll(async () => {
   const db   = await getDb();
   const roles = await seedRoles(db);
   adminRoleId  = roles.adminRoleId;
   lawyerRoleId = roles.lawyerRoleId;
+  ({ comboId } = await seedMateria(db));
+  ({ estadoEtapaId } = await seedEstadoEtapa(db));
 
   const admin  = await seedUser(db, { nombre: 'Admin Int', email: 'admin-int@test.com', password: 'Pass1!' });
   const lawyer = await seedUser(db, { nombre: 'Lawyer Int', email: 'lawyer-int@test.com', password: 'Pass1!' });
@@ -81,18 +83,18 @@ describe('Repositorio users', () => {
 
   test('addRole asigna rol y getRoles lo devuelve', async () => {
     const db    = await getDb();
-    const { rows: [r] } = await db.query(`SELECT id FROM roles WHERE nombre = 'lawyer'`);
+    const { rows: [r] } = await db.query(`SELECT id FROM roles WHERE nombre = 'abogado'`);
     await users.addRole(adminId, Number(r.id), adminId);
     const roles = await users.getRoles(adminId);
-    expect(roles.some((x) => x.nombre === 'lawyer')).toBe(true);
+    expect(roles.some((x) => x.nombre === 'abogado')).toBe(true);
   });
 
   test('removeRole elimina el rol', async () => {
     const db    = await getDb();
-    const { rows: [r] } = await db.query(`SELECT id FROM roles WHERE nombre = 'lawyer'`);
+    const { rows: [r] } = await db.query(`SELECT id FROM roles WHERE nombre = 'abogado'`);
     await users.removeRole(adminId, Number(r.id), adminId);
     const roles = await users.getRoles(adminId);
-    expect(roles.some((x) => x.nombre === 'lawyer')).toBe(false);
+    expect(roles.some((x) => x.nombre === 'abogado')).toBe(false);
   });
 
   test('update modifica campos permitidos', async () => {
@@ -145,6 +147,9 @@ describe('Repositorio expedientes', () => {
     const row = await expedientes.create({
       numero_de_expediente: 'INT-EXP-001',
       id_cliente: clienteId,
+      id_tipo_proc_subtipo_proc_tipo_pre: comboId,
+      contraparte: 'Contraparte Int',
+      correo_juzgado: 'juzgado@int.test',
     }, lawyerId);
     expect(row).toHaveProperty('id');
     expect(row.numero_de_expediente).toBe('INT-EXP-001');
@@ -153,7 +158,7 @@ describe('Repositorio expedientes', () => {
 
   test('create rechaza número de expediente duplicado', async () => {
     await expect(
-      expedientes.create({ numero_de_expediente: 'INT-EXP-001' }, lawyerId)
+      expedientes.create({ numero_de_expediente: 'INT-EXP-001', id_tipo_proc_subtipo_proc_tipo_pre: comboId }, lawyerId)
     ).rejects.toThrow();
   });
 
@@ -181,7 +186,7 @@ describe('Repositorio expedientes', () => {
   });
 
   test('createEtapa inserta etapa y retorna fila', async () => {
-    const etapa = await expedientes.createEtapa(expedienteId, { origen: 'manual' }, lawyerId);
+    const etapa = await expedientes.createEtapa(expedienteId, { origen: 'manual', orden: 1, id_estado_etapa: estadoEtapaId }, lawyerId);
     expect(etapa).toHaveProperty('id');
     expect(Number(etapa.id_expediente)).toBe(expedienteId);
   });
@@ -214,8 +219,8 @@ describe('Repositorio tareas', () => {
     const db = await getDb();
     // Necesitamos un expediente activo para las tareas con FK
     const { rows: [exp] } = await db.query(
-      `INSERT INTO expediente (id_usuario, numero_de_expediente) VALUES ($1,'INT-TAREA-EXP') RETURNING id`,
-      [lawyerId]
+      `INSERT INTO expediente (id_usuario, numero_de_expediente, id_tipo_proc_subtipo_proc_tipo_pre) VALUES ($1,'INT-TAREA-EXP',$2) RETURNING id`,
+      [lawyerId, comboId]
     );
     expedienteId = Number(exp.id);
 
@@ -291,6 +296,7 @@ describe('Repositorio financiero', () => {
   test('createHonorario inserta con FK a expediente', async () => {
     const row = await financiero.createHonorario({
       id_expediente:       expedienteId,
+      modalidad:           'fijo',
       monto_total_pactado: 8000000,
       moneda:              'COP',
     }, adminId);

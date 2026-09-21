@@ -26,7 +26,7 @@ jest.mock('../../src/db/client', () => {
 const request  = require('supertest');
 const { getDb } = require('../../src/db/client');
 const {
-  makeApp, seedRoles, seedUser, assignRole, tokenFor,
+  makeApp, seedRoles, seedMateria, seedUser, assignRole, tokenFor,
   seedTareasCatalogos,
 } = require('./helpers');
 
@@ -45,6 +45,7 @@ beforeAll(async () => {
   const db = await getDb();
 
   const roles = await seedRoles(db);
+  const { comboId } = await seedMateria(db);
 
   const lawyer = await seedUser(db, {
     nombre: 'Abogada Tareas',
@@ -53,7 +54,7 @@ beforeAll(async () => {
   });
   await assignRole(db, lawyer.id, roles.lawyerRoleId);
   lawyerId    = Number(lawyer.id);
-  lawyerToken = tokenFor({ id: lawyer.id, nombre: lawyer.nombre, email: lawyer.email, roles: ['lawyer'] });
+  lawyerToken = tokenFor({ id: lawyer.id, nombre: lawyer.nombre, email: lawyer.email, roles: ['abogado'] });
 
   const cats = await seedTareasCatalogos(db);
   estadoPendienteId  = cats.estadoPendienteId;
@@ -62,9 +63,9 @@ beforeAll(async () => {
 
   // Create an expediente directly in the DB for tarea FK tests
   const { rows: [exp] } = await db.query(
-    `INSERT INTO expediente (id_usuario, numero_de_expediente)
-     VALUES ($1, $2) RETURNING id`,
-    [lawyer.id, 'EXP-TAREAS-001']
+    `INSERT INTO expediente (id_usuario, numero_de_expediente, id_tipo_proc_subtipo_proc_tipo_pre)
+     VALUES ($1, $2, $3) RETURNING id`,
+    [lawyer.id, 'EXP-TAREAS-001', comboId]
   );
   expedienteId = Number(exp.id);
 
@@ -93,12 +94,31 @@ describe('Crear tareas', () => {
     expect(res.status).toBe(400);
   });
 
-  test('POST /api/tareas — tarea simple sin expediente → 201', async () => {
+  test('POST /api/tareas — sin expediente → 400 (el expediente es obligatorio)', async () => {
+    const res = await request(app)
+      .post('/api/tareas')
+      .set('Authorization', `Bearer ${lawyerToken}`)
+      .send({ titulo: 'Tarea suelta', id_estado_tarea: estadoPendienteId });
+
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /api/tareas — sin estado → 400 (el estado es obligatorio)', async () => {
+    const res = await request(app)
+      .post('/api/tareas')
+      .set('Authorization', `Bearer ${lawyerToken}`)
+      .send({ titulo: 'Sin estado', id_expediente: expedienteId });
+
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /api/tareas — tarea básica con prioridad y responsable → 201', async () => {
     const res = await request(app)
       .post('/api/tareas')
       .set('Authorization', `Bearer ${lawyerToken}`)
       .send({
         titulo:               'Revisar contrato',
+        id_expediente:        expedienteId,
         id_prioridad:         prioridadAltaId,
         id_estado_tarea:      estadoPendienteId,
         id_usuario_asignado:  lawyerId,
@@ -139,8 +159,9 @@ describe('Consultar tareas', () => {
       .set('Authorization', `Bearer ${lawyerToken}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThanOrEqual(2);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(2);
+    expect(res.body.total).toBeGreaterThanOrEqual(2);
   });
 
   test('GET /api/tareas?id_expediente=X — filtro por expediente → 200', async () => {
@@ -149,8 +170,8 @@ describe('Consultar tareas', () => {
       .set('Authorization', `Bearer ${lawyerToken}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.every((t) => Number(t.id_expediente) === expedienteId)).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.every((t) => Number(t.id_expediente) === expedienteId)).toBe(true);
   });
 
   test('GET /api/tareas/:id → 200', async () => {

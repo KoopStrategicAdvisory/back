@@ -183,7 +183,7 @@ describe('Gestión de usuarios', () => {
 
     expect(res.status).toBe(200);
     const roleNames = res.body.roles.map((r) => r.nombre);
-    expect(roleNames).toContain('lawyer');
+    expect(roleNames).toContain('abogado');
   });
 
   test('GET /api/users/9999 — ID inexistente → 404', async () => {
@@ -216,7 +216,7 @@ describe('Login de usuario abogado', () => {
       .send({ email: 'abogado@koop.test', password: 'Lawyer1234!' });
 
     expect(res.status).toBe(200);
-    expect(res.body.user.roles).toContain('lawyer');
+    expect(res.body.user.roles).toContain('abogado');
     lawyerToken = res.body.accessToken;
   });
 });
@@ -248,14 +248,23 @@ describe('Auto-registro y activación', () => {
     expect(res.status).toBe(403);
   });
 
-  test('POST /api/auth/register — email duplicado → 409', async () => {
+  test('POST /api/auth/register — reintento con el mismo correo pendiente retoma la cuenta → 201', async () => {
     const res = await request(app)
       .post('/api/auth/register')
-      .send({
-        nombre:   'Duplicado',
-        email:    'nuevo@koop.test',
-        password: 'NewPass1234!',
-      });
+      .send({ nombre: 'Nuevo Usuario (reintento)', email: 'nuevo@koop.test', password: 'OtraPass1234!' });
+
+    expect(res.status).toBe(201);
+    // No se crea una segunda fila: sigue habiendo una sola cuenta con ese correo.
+    const { rows } = await (await require('./db-client').getDb()).query(
+      `SELECT count(*)::int AS n FROM users WHERE email = 'nuevo@koop.test'`
+    );
+    expect(rows[0].n).toBe(1);
+  });
+
+  test('POST /api/auth/register — correo de una cuenta ACTIVA → 409', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ nombre: 'Duplicado', email: 'abogado@koop.test', password: 'NewPass1234!' });
 
     expect(res.status).toBe(409);
   });

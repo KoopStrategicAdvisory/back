@@ -76,9 +76,17 @@ describe('POST /financiero/honorarios', () => {
     const res = await request(app)
       .post('/honorarios')
       .set('Authorization', lawyerToken())
-      .send({ id_expediente: 5 });
+      .send({ id_expediente: 5, modalidad: 'fijo' });
 
     expect(res.status).toBe(201);
+  });
+
+  it('returns 400 when modalidad is missing or invalid (era un 500 de la base de datos)', async () => {
+    for (const cuerpo of [{ id_expediente: 5 }, { id_expediente: 5, modalidad: 'gratis' }]) {
+      const res = await request(app).post('/honorarios').set('Authorization', lawyerToken()).send(cuerpo);
+      expect(res.status).toBe(400);
+    }
+    expect(repos.financiero.createHonorario).not.toHaveBeenCalled();
   });
 
   it('returns 400 when id_expediente missing', async () => {

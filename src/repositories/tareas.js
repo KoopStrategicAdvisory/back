@@ -166,7 +166,12 @@ async function createChecklistItem(data, userId) {
     const { rows } = await tx.query(`
       INSERT INTO checklist_tarea
         (id_tarea, titulo, orden, id_usuario_asignado, fecha_limite)
-      VALUES ($1,$2,$3,$4,$5)
+      VALUES ($1,$2,
+        -- Sin orden explicito se agrega al final: pasar NULL directo violaba el
+        -- NOT NULL de la columna (el DEFAULT no aplica a un NULL explicito) y
+        -- crear un item con solo el titulo devolvia 500.
+        COALESCE($3, (SELECT COALESCE(MAX(orden), 0) + 1 FROM checklist_tarea WHERE id_tarea = $1)),
+        $4,$5)
       RETURNING *
     `, [data.id_tarea, data.titulo, data.orden ?? null, data.id_usuario_asignado ?? null, data.fecha_limite ?? null]);
     return rows[0];

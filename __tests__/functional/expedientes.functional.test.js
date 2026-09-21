@@ -25,9 +25,11 @@ jest.mock('../../src/db/client', () => {
 
 const request  = require('supertest');
 const { getDb } = require('../../src/db/client');
-const { makeApp, seedRoles, seedUser, assignRole, tokenFor, seedEstadoProceso } = require('./helpers');
+const { makeApp, seedRoles, seedMateria, seedEstadoEtapa, datosExpediente, seedUser, assignRole, tokenFor, seedEstadoProceso } = require('./helpers');
 
 let app;
+let comboId;
+let estadoEtapaId;
 let adminToken;
 let lawyerToken;
 let clienteId;
@@ -39,6 +41,8 @@ beforeAll(async () => {
 
   const roles = await seedRoles(db);
   const { estadoActivoId } = await seedEstadoProceso(db);
+  ({ comboId } = await seedMateria(db));
+  ({ estadoEtapaId } = await seedEstadoEtapa(db));
 
   const admin = await seedUser(db, {
     nombre: 'Admin Exp',
@@ -55,7 +59,7 @@ beforeAll(async () => {
   await assignRole(db, lawyer.id, roles.lawyerRoleId);
 
   adminToken  = tokenFor({ id: admin.id,  nombre: admin.nombre,  email: admin.email,  roles: ['admin'] });
-  lawyerToken = tokenFor({ id: lawyer.id, nombre: lawyer.nombre, email: lawyer.email, roles: ['lawyer'] });
+  lawyerToken = tokenFor({ id: lawyer.id, nombre: lawyer.nombre, email: lawyer.email, roles: ['abogado'] });
 
   app = makeApp();
 }, 30000);
@@ -121,11 +125,11 @@ describe('Gestión de expedientes', () => {
     const res = await request(app)
       .post('/api/expedientes')
       .set('Authorization', `Bearer ${lawyerToken}`)
-      .send({
+      .send(datosExpediente(comboId, {
         numero_de_expediente: 'EXP-2026-001',
         id_cliente: clienteId,
         juzgado_o_autoridad_que_conoce: 'Juzgado 5 Civil',
-      });
+      }));
 
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty('id');
@@ -137,7 +141,7 @@ describe('Gestión de expedientes', () => {
     const res = await request(app)
       .post('/api/expedientes')
       .set('Authorization', `Bearer ${lawyerToken}`)
-      .send({ numero_de_expediente: 'EXP-2026-001' });
+      .send(datosExpediente(comboId, { numero_de_expediente: 'EXP-2026-001' }));
 
     expect(res.status).toBe(409);
   });
@@ -201,6 +205,8 @@ describe('Etapas del expediente', () => {
       .set('Authorization', `Bearer ${lawyerToken}`)
       .send({
         origen: 'manual',
+        orden: 1,
+        id_estado_etapa: estadoEtapaId,
         observaciones: 'Primera etapa del proceso',
       });
 
