@@ -79,6 +79,19 @@ function instalarS3Falso() {
   });
 }
 
+// Rama Judicial falsa: la verificación automática consulta el portal real del
+// gobierno, que no se puede controlar desde una prueba. Aquí devuelve siempre
+// el mismo proceso y la misma última actuación.
+function instalarRamaJudicialFalsa() {
+  const rama = require('../src/services/ramaJudicial');
+  Object.assign(rama, {
+    async buscarPorRadicado() { return { idProceso: 777001 }; },
+    async ultimaActuacion() {
+      return { fechaActuacion: '2026-05-25T00:00:00', actuacion: 'Oficio Enviado Virtualmente', anotacion: 'RADICACION OFICIO 629' };
+    },
+  });
+}
+
 const PASSWORD = 'E2eTest12345!';
 const USERS = [
   { nombre: 'E2E Admin', email: 'e2e.admin@koop.test', rol: 'admin' },
@@ -122,6 +135,7 @@ async function seedUsers() {
   await require('../src/db/client').getDb(); // crea schema + seed + migraciones
   await seedUsers();
   instalarS3Falso();
+  instalarRamaJudicialFalsa();
   console.log(`[e2e] base ${DB} lista, arrancando API en el puerto ${process.env.PORT}`);
   require('../src/index.js');
 })().catch((e) => { console.error('[e2e] no se pudo preparar el entorno:', e); process.exit(1); });
