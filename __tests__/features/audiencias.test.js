@@ -3,6 +3,7 @@
 process.env.ACCESS_TOKEN_SECRET = 'test-access-secret';
 
 jest.mock('../../src/repositories', () => ({
+  expedientes: { findById: jest.fn() },
   audiencias: {
     findAll:       jest.fn(),
     findById:      jest.fn(),
@@ -86,7 +87,7 @@ describe('POST /audiencias', () => {
     const res = await request(app)
       .post('/')
       .set('Authorization', lawyerToken())
-      .send({ id_expediente: 7, fecha_programada: '2026-03-10T10:00:00' });
+      .send({ id_expediente: 7, fecha_programada: '2026-03-10T10:00:00', tipo_audiencia: 'Audiencia inicial' });
 
     expect(res.status).toBe(201);
   });

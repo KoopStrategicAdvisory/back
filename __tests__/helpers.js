@@ -35,7 +35,7 @@ function adminToken(overrides = {}) {
 /** Returns a valid Bearer token for a lawyer user. */
 function lawyerToken(overrides = {}) {
   return 'Bearer ' + jwt.sign(
-    { sub: '2', roles: ['lawyer'], email: 'lawyer@test.com', active: true, ...overrides },
+    { sub: '2', roles: ['abogado'], email: 'lawyer@test.com', active: true, ...overrides },
     SECRET,
     { expiresIn: '1h' }
   );
@@ -44,7 +44,7 @@ function lawyerToken(overrides = {}) {
 /** Returns a valid Bearer token for a client user. */
 function clientToken(overrides = {}) {
   return 'Bearer ' + jwt.sign(
-    { sub: '3', roles: ['client'], email: 'client@test.com', active: true, ...overrides },
+    { sub: '3', roles: ['cliente'], email: 'client@test.com', active: true, ...overrides },
     SECRET,
     { expiresIn: '1h' }
   );

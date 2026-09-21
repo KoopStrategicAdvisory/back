@@ -14,7 +14,15 @@ jest.mock('../../src/repositories', () => ({
     createEtapa:     jest.fn(),
     updateEtapa:     jest.fn(),
     softDeleteEtapa: jest.fn(),
+    generateEtapasFromPlantilla: jest.fn(),
   },
+}));
+
+// Borrar un expediente también limpia sus documentos en S3; aquí no se toca S3.
+jest.mock('../../src/services/s3', () => ({
+  deletePrefix: jest.fn().mockResolvedValue({ deleted: 0 }),
+  documentoPrefix: (n) => `documentos/${n}`,
+  renamePrefix: jest.fn(),
 }));
 
 const request = require('supertest');
@@ -74,6 +82,14 @@ describe('GET /expedientes/:id', () => {
   });
 });
 
+// Campos obligatorios al crear: número, materia (combo), contraparte y correo del juzgado.
+const NUEVO_EXPEDIENTE = {
+  numero_de_expediente: 'EXP-001',
+  id_tipo_proc_subtipo_proc_tipo_pre: 1,
+  contraparte: 'Empresa Demandada S.A.S.',
+  correo_juzgado: 'juzgado@rama.gov.co',
+};
+
 describe('POST /expedientes', () => {
   it('returns 201 when lawyer creates expediente', async () => {
     repos.expedientes.create.mockResolvedValue(EXPEDIENTE);
@@ -81,9 +97,25 @@ describe('POST /expedientes', () => {
     const res = await request(app)
       .post('/')
       .set('Authorization', lawyerToken())
-      .send({ numero_de_expediente: 'EXP-001' });
+      .send(NUEVO_EXPEDIENTE);
 
     expect(res.status).toBe(201);
+    expect(repos.expedientes.generateEtapasFromPlantilla).toHaveBeenCalledWith(EXPEDIENTE.id, '2');
+  });
+
+  it.each([
+    ['contraparte', { contraparte: '' }],
+    ['correo_juzgado', { correo_juzgado: '' }],
+    ['correo_juzgado con formato inválido', { correo_juzgado: 'no-es-un-correo' }],
+    ['materia (id_tipo_proc_subtipo_proc_tipo_pre)', { id_tipo_proc_subtipo_proc_tipo_pre: undefined }],
+  ])('returns 400 when %s is missing or invalid', async (_campo, cambio) => {
+    const res = await request(app)
+      .post('/')
+      .set('Authorization', adminToken())
+      .send({ ...NUEVO_EXPEDIENTE, ...cambio });
+
+    expect(res.status).toBe(400);
+    expect(repos.expedientes.create).not.toHaveBeenCalled();
   });
 
   it('returns 400 when numero_de_expediente is missing', async () => {
@@ -127,6 +159,7 @@ describe('PUT /expedientes/:id', () => {
 
 describe('DELETE /expedientes/:id', () => {
   it('returns 204 on success', async () => {
+    repos.expedientes.findById.mockResolvedValue(EXPEDIENTE);
     repos.expedientes.softDelete.mockResolvedValue({ id: 1 });
 
     const res = await request(app).delete('/1').set('Authorization', adminToken());
@@ -134,6 +167,7 @@ describe('DELETE /expedientes/:id', () => {
   });
 
   it('returns 404 when not found', async () => {
+    repos.expedientes.findById.mockResolvedValue(null);
     repos.expedientes.softDelete.mockResolvedValue(null);
 
     const res = await request(app).delete('/99').set('Authorization', adminToken());
@@ -145,6 +179,7 @@ describe('DELETE /expedientes/:id', () => {
 
 describe('GET /expedientes/:id/etapas', () => {
   it('returns 200 with etapas list', async () => {
+    repos.expedientes.findById.mockResolvedValue(EXPEDIENTE);
     repos.expedientes.findEtapas.mockResolvedValue([ETAPA]);
 
     const res = await request(app).get('/1/etapas').set('Authorization', adminToken());
@@ -162,11 +197,11 @@ describe('POST /expedientes/:id/etapas', () => {
     const res = await request(app)
       .post('/1/etapas')
       .set('Authorization', adminToken())
-      .send({ id_etapa_procesal: 1 });
+      .send({ id_etapa: 1, orden: 1, id_estado_etapa: 1 });
 
     expect(res.status).toBe(201);
     expect(repos.expedientes.createEtapa).toHaveBeenCalledWith(
-      1, expect.objectContaining({ id_etapa_procesal: 1 }), '1'
+      1, expect.objectContaining({ id_etapa: 1, orden: 1 }), '1'
     );
   });
 });

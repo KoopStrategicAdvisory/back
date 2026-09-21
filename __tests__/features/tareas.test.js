@@ -3,8 +3,10 @@
 process.env.ACCESS_TOKEN_SECRET = 'test-access-secret';
 
 jest.mock('../../src/repositories', () => ({
+  expedientes: { findById: jest.fn() },
   tareas: {
     findAll:                 jest.fn(),
+    count:                   jest.fn(),
     findById:                jest.fn(),
     create:                  jest.fn(),
     update:                  jest.fn(),
@@ -61,6 +63,7 @@ describe('GET /tareas/proximas-vencer', () => {
 describe('GET /tareas', () => {
   it('returns 200 with filtered list', async () => {
     repos.tareas.findAll.mockResolvedValue([TAREA]);
+    repos.tareas.count.mockResolvedValue(1);
 
     const res = await request(app)
       .get('/?id_expediente=5')
@@ -101,7 +104,7 @@ describe('POST /tareas', () => {
     const res = await request(app)
       .post('/')
       .set('Authorization', lawyerToken())
-      .send({ titulo: 'Revisar contrato', id_expediente: 5 });
+      .send({ titulo: 'Revisar contrato', id_expediente: 5, id_estado_tarea: 1 });
 
     expect(res.status).toBe(201);
   });

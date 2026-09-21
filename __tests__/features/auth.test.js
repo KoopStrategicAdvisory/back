@@ -16,7 +16,11 @@ jest.mock('../../src/repositories', () => ({
     setPasswordReset: jest.fn(),
     updatePassword: jest.fn(),
     setEmailVerified: jest.fn(),
+    resetPendingRegistration: jest.fn(),
+    addRole: jest.fn(),
   },
+  clientes: { findByDocumento: jest.fn(), findById: jest.fn() },
+  catalogos: { roles: { findAll: jest.fn().mockResolvedValue([]) } },
 }));
 
 jest.mock('../../src/db/client', () => ({
@@ -50,14 +54,30 @@ describe('POST /register', () => {
     expect(repos.users.create).toHaveBeenCalledTimes(1);
   });
 
-  it('returns 409 when email already exists', async () => {
-    repos.users.findByEmail.mockResolvedValue({ id: 1, email: 'ana@test.com' });
+  it('returns 409 when email already belongs to an active account', async () => {
+    repos.users.findByEmail.mockResolvedValue({ id: 1, email: 'ana@test.com', active: true });
 
     const res = await request(app).post('/register').send({
       nombre: 'Ana', email: 'ana@test.com', password: 'secret123',
     });
 
     expect(res.status).toBe(409);
+    expect(repos.users.create).not.toHaveBeenCalled();
+  });
+
+  // Reintento muy común: la persona se registra dos veces con el mismo correo
+  // sin haber activado la cuenta. Se retoma esa fila en vez de dar un 409.
+  it('reuses the pending (not yet active) registration with the same email', async () => {
+    const pendiente = { id: 7, email: 'ana@test.com', active: false };
+    repos.users.findByEmail.mockResolvedValue(pendiente);
+    repos.users.resetPendingRegistration.mockResolvedValue({ ...pendiente, nombre: 'Ana' });
+
+    const res = await request(app).post('/register').send({
+      nombre: 'Ana', email: 'ana@test.com', password: 'secret123',
+    });
+
+    expect(res.status).toBe(201);
+    expect(repos.users.resetPendingRegistration).toHaveBeenCalledWith(7, expect.objectContaining({ nombre: 'Ana' }));
     expect(repos.users.create).not.toHaveBeenCalled();
   });
 
