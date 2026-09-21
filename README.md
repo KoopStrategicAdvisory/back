@@ -251,3 +251,18 @@ Estos módulos tienen API completa en el backend; este documento se enfoca en lo
 - **`contraparte`** en expediente es texto plano, no un catálogo — se escribe cada vez porque varía caso a caso.
 - Los identificadores numéricos de Postgres (`bigint`) llegan como **strings** en JSON; las comparaciones en frontend usan `String(a) === String(b)`, nunca `===` directo.
 - Todas las claves de S3 siguen el patrón `documentos/{numero_de_expediente}/{timestamp}-{nombre-sanitizado}` (ej. `documentos/KOOP-2026-3/...`) — es lo que permite purgar por prefijo al borrar un expediente completo, y renombrar la carpeta si el número de expediente cambia.
+
+---
+
+## Pruebas, reporte y manual (cómo se entrega un cambio)
+
+Todo cambio (funcionalidad, corrección, flujo) se entrega con **pruebas, reporte de pruebas y manual de usuario al día**. El procedimiento paso a paso y las plantillas están en `.claude/skills/entrega-koop/` (y resumidos en `CLAUDE.md`).
+
+| Capa | Dónde | Cómo correrla |
+|---|---|---|
+| Unitarias (backend) | `__tests__/features` | `npm test` |
+| Funcionales e integración (backend, Postgres en memoria) | `__tests__/functional`, `__tests__/integration` | `npm run test:functional` |
+| Navegador (E2E, Playwright, instancia aislada) | `v2/front/apps/koop/e2e` | `pnpm test:e2e` (desde `apps/koop`) |
+| Manual de usuario (capturas + PDF) | `v2/front/apps/koop/docs/manual` | `pnpm manual` (desde `apps/koop`) |
+
+**Todo junto, con reporte:** `npm run verificar` → genera `reports/reporte-de-pruebas.html` (y `.md`), con el resultado por capa, cada prueba y un aviso si el manual quedó atrás de la interfaz. Con `-- --con-manual` también regenera el manual; con `-- --sin-e2e` corre solo el backend. El E2E necesita Docker Desktop abierto. GitHub Actions corre `npm run test:all` en cada push.

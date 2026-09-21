@@ -11,7 +11,8 @@
         "test:functional": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.functional.config.js --runInBand --forceExit",
         "test:all": "npm run test && npm run test:functional",
         "db:server": "pglite-server --db=../.pgdata --port=5433 --max-connections=5",
-        "db:web": "node scripts/db-web-viewer.js"
+        "db:web": "node scripts/db-web-viewer.js",
+        "verificar": "node scripts/reporte-pruebas.cjs"
     },
     "jest": {
         "testEnvironment": "node",
