@@ -22,7 +22,8 @@ process.env.NODE_ENV = 'development';
 process.env.S3_BUCKET_NAME = '';
 process.env.AWS_ACCESS_KEY_ID = '';
 process.env.AWS_SECRET_ACCESS_KEY = '';
-process.env.RESEND_API_KEY = '';
+process.env.RESEND_API_KEY = 'e2e-clave-falsa'; // el fetch a Resend se intercepta abajo
+process.env.FRONTEND_URL = process.env.E2E_FRONT_URL || 'http://localhost:5199';
 
 // S3 falso en memoria: las pruebas de documentos suben, descargan y borran
 // archivos de verdad contra este stub, sin tocar el bucket real. Se aplica
@@ -32,8 +33,25 @@ function instalarS3Falso() {
   const http = require('http');
   const s3 = require('../src/services/s3');
   const store = new Map();
+  const correos = [];
+  // Correos de mentira: cualquier POST a Resend se guarda aquí y NO sale a
+  // internet. Las pruebas leen los enlaces desde /__emails?to=...
+  const fetchReal = global.fetch;
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith('https://api.resend.com')) {
+      const b = JSON.parse(opts.body);
+      correos.push({ to: [].concat(b.to)[0], subject: b.subject, html: b.html });
+      return { ok: true, status: 200, json: async () => ({ id: 'e2e-fake' }), text: async () => '' };
+    }
+    return fetchReal(url, opts);
+  };
   const PORT_BLOBS = Number(process.env.E2E_S3_PORT || 4101);
   http.createServer((req, res) => {
+    if (req.url.startsWith('/__emails')) {
+      const to = new URL(req.url, 'http://x').searchParams.get('to');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify(correos.filter((c) => !to || c.to === to)));
+    }
     const key = decodeURIComponent(req.url.slice(1).split('?')[0]);
     const obj = store.get(key);
     if (!obj) { res.writeHead(404); return res.end(); }
